@@ -45,6 +45,34 @@ router.delete('/:id', verifyToken, (req, res) => {
   res.json({ ok: true });
 });
 
+// ── REGISTER ────────────────────────────────────────────────────────────────
+router.post('/register', (req, res) => {
+  const { name, email, password, rememberMe = true } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
+  if (password.length < 6) return res.status(400).json({ error: 'Password min 6 characters' });
+
+  // Check if any users exist — first user gets admin, rest get mechanic
+  const count = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+  const role = count === 0 ? 'admin' : 'mechanic';
+
+  try {
+    const result = db.prepare('INSERT INTO users (name, email, password, role) VALUES (?,?,?,?)').run(name, email, password, role);
+    const user = { id: result.lastInsertRowid, name, email, role };
+
+    const accessToken = signAccess(user);
+    const refreshToken = signRefresh(user.id, rememberMe);
+    db.prepare('INSERT INTO refresh_tokens (token, user_id, expires_at) VALUES (?,?,?)').run(
+      refreshToken, user.id,
+      new Date(Date.now() + (rememberMe ? 30 : 1) * 24 * 60 * 60 * 1000).toISOString()
+    );
+
+    res.cookie('rt', refreshToken, cookieOpts(rememberMe));
+    res.json({ accessToken, user });
+  } catch {
+    res.status(400).json({ error: 'Email already exists' });
+  }
+});
+
 // ── LOGIN ───────────────────────────────────────────────────────────────────
 router.post('/login', (req, res) => {
   const { email, password, rememberMe = false } = req.body;
