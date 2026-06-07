@@ -1,18 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import axios from 'axios';
-import { Plus, Search, Edit2, Trash2, Car, ChevronRight, Phone, Mail } from 'lucide-react';
+import api from '../api.js';
+import { Plus, Search, Edit2, Trash2, Car, ChevronRight, Phone, Mail, Bell, CheckCircle2, Trash } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
+
+const lang = () => (localStorage.getItem('lang') || 'ru').slice(0,2);
 
 function ClientForm({ initial, onSave, onClose }) {
   const { t } = useTranslation();
-  const [form, setForm] = useState(initial || { name: '', phone: '', email: '', notes: '' });
+  const [form, setForm] = useState(initial || { name: '', phone: '', email: '', notes: '', birthday: '' });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const l = lang();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (initial?.id) await axios.put(`/api/clients/${initial.id}`, form);
-    else await axios.post('/api/clients', form);
+    if (initial?.id) await api.put(`/clients/${initial.id}`, form);
+    else await api.post('/clients', form);
     onSave();
   };
 
@@ -33,6 +36,10 @@ function ClientForm({ initial, onSave, onClose }) {
         </div>
       </div>
       <div>
+        <label className="label">{l==='ru'?'День рождения':l==='es'?'Cumpleaños':'Birthday'}</label>
+        <input className="input" type="date" value={form.birthday || ''} onChange={e => set('birthday', e.target.value)} />
+      </div>
+      <div>
         <label className="label">{t('clients.notes')}</label>
         <textarea className="input" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
       </div>
@@ -47,12 +54,32 @@ function ClientForm({ initial, onSave, onClose }) {
 function VehicleForm({ clientId, initial, onSave, onClose }) {
   const { t } = useTranslation();
   const [form, setForm] = useState(initial || { brand: '', model: '', year: '', vin: '', plate: '', color: '', mileage: '', notes: '' });
+  const [vinLoading, setVinLoading] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleVinChange = async (vin) => {
+    set('vin', vin);
+    if (vin.length === 17) {
+      setVinLoading(true);
+      try {
+        const r = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/${vin}?format=json`);
+        const data = await r.json();
+        const get = (name) => data.Results?.find(r => r.Variable === name)?.Value;
+        const make = get('Make');
+        const model = get('Model');
+        const year = get('Model Year');
+        if (make && make !== 'null') set('brand', make);
+        if (model && model !== 'null') set('model', model);
+        if (year && year !== 'null') set('year', year);
+      } catch {}
+      setVinLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (initial?.id) await axios.put(`/api/vehicles/${initial.id}`, form);
-    else await axios.post('/api/vehicles', { ...form, client_id: clientId });
+    if (initial?.id) await api.put(`/vehicles/${initial.id}`, form);
+    else await api.post('/vehicles', { ...form, client_id: clientId });
     onSave();
   };
 
@@ -75,9 +102,9 @@ function VehicleForm({ clientId, initial, onSave, onClose }) {
           <label className="label">{t('vehicles.plate')}</label>
           <input className="input" value={form.plate} onChange={e => set('plate', e.target.value)} />
         </div>
-        <div>
-          <label className="label">{t('vehicles.vin')}</label>
-          <input className="input" value={form.vin} onChange={e => set('vin', e.target.value)} />
+        <div className="col-span-2">
+          <label className="label">{t('vehicles.vin')} {vinLoading && <span className="text-xs text-blue-500 ml-1">loading...</span>}</label>
+          <input className="input" value={form.vin} onChange={e => handleVinChange(e.target.value)} placeholder="17 chars — auto-fill" />
         </div>
         <div>
           <label className="label">{t('vehicles.color')}</label>
@@ -100,27 +127,76 @@ function VehicleForm({ clientId, initial, onSave, onClose }) {
   );
 }
 
+function ReminderForm({ clientId, onSave }) {
+  const l = lang();
+  const [form, setForm] = useState({ title: '', due_date: '', repeat_months: 0 });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await api.post('/reminders', { client_id: clientId, ...form });
+    setForm({ title: '', due_date: '', repeat_months: 0 });
+    onSave();
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end">
+      <div className="flex-1 min-w-32">
+        <label className="label">{l==='ru'?'Напоминание':l==='es'?'Recordatorio':'Reminder'} *</label>
+        <input className="input text-sm" value={form.title} onChange={e => set('title', e.target.value)} required placeholder={l==='ru'?'Заголовок':'Title'} />
+      </div>
+      <div>
+        <label className="label">{l==='ru'?'Дата':l==='es'?'Fecha':'Date'}</label>
+        <input className="input text-sm" type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
+      </div>
+      <div className="w-28">
+        <label className="label">{l==='ru'?'Повтор (мес)':'Repeat (mo)'}</label>
+        <input className="input text-sm" type="number" min="0" value={form.repeat_months} onChange={e => set('repeat_months', e.target.value)} />
+      </div>
+      <button type="submit" className="btn-primary py-2 text-sm"><Plus size={14}/></button>
+    </form>
+  );
+}
+
 export default function Clients() {
   const { t } = useTranslation();
   const [clients, setClients] = useState([]);
   const [search, setSearch] = useState('');
-  const [modal, setModal] = useState(null); // null | 'add' | 'edit' | 'detail' | 'vehicle'
+  const [modal, setModal] = useState(null);
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [reminders, setReminders] = useState([]);
+  const l = lang();
 
-  const load = () => axios.get(`/api/clients?search=${search}`).then(r => setClients(r.data));
+  const load = () => api.get(`/clients?search=${search}`).then(r => setClients(r.data));
   useEffect(() => { load(); }, [search]);
 
   const openDetail = async (c) => {
-    const { data } = await axios.get(`/api/clients/${c.id}`);
+    const { data } = await api.get(`/clients/${c.id}`);
     setDetail(data);
     setModal('detail');
+    loadReminders(c.id);
+  };
+
+  const loadReminders = async (id) => {
+    const { data } = await api.get(`/reminders/client/${id}`);
+    setReminders(data);
   };
 
   const deleteClient = async (id) => {
     if (!confirm(t('clients.confirmDelete'))) return;
-    await axios.delete(`/api/clients/${id}`);
+    await api.delete(`/clients/${id}`);
     load();
+  };
+
+  const completeReminder = async (id) => {
+    await api.put(`/reminders/${id}/complete`);
+    loadReminders(detail.id);
+  };
+
+  const deleteReminder = async (id) => {
+    await api.delete(`/reminders/${id}`);
+    loadReminders(detail.id);
   };
 
   return (
@@ -198,6 +274,7 @@ export default function Clients() {
             <div className="grid grid-cols-2 gap-4">
               {detail.phone && <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><Phone size={14}/>{detail.phone}</div>}
               {detail.email && <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><Mail size={14}/>{detail.email}</div>}
+              {detail.birthday && <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">🎂 {detail.birthday}</div>}
             </div>
             {detail.notes && <p className="text-sm text-gray-500">{detail.notes}</p>}
 
@@ -216,7 +293,7 @@ export default function Clients() {
                       <Car size={16} className="text-gray-400" />
                       <div className="flex-1">
                         <span className="font-medium text-gray-900 dark:text-white">{v.brand} {v.model}</span>
-                        <span className="text-gray-400 ml-2 text-xs">{v.year} {v.plate && `· ${v.plate}`}</span>
+                        <span className="text-gray-400 ml-2 text-xs">{v.year} {v.plate && `· ${v.plate}`} {v.vin && `· ${v.vin}`}</span>
                       </div>
                     </div>
                   ))}
@@ -224,7 +301,7 @@ export default function Clients() {
               )}
             </div>
 
-            {/* Orders history */}
+            {/* Orders history timeline */}
             <div>
               <h3 className="font-medium text-gray-900 dark:text-white mb-2">{t('clients.orders')}</h3>
               {detail.orders.length === 0 ? (
@@ -232,10 +309,52 @@ export default function Clients() {
               ) : (
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   {detail.orders.map(o => (
-                    <div key={o.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-sm">
-                      <span className="text-gray-500">#{o.id}</span>
-                      <span className="flex-1 mx-3 text-gray-700 dark:text-gray-300 truncate">{o.complaint || '—'}</span>
-                      <span className="text-gray-400 text-xs">{o.created_at?.slice(0,10)}</span>
+                    <div key={o.id} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-sm">
+                      <div className="flex-shrink-0 mt-0.5">
+                        <div className="w-2 h-2 rounded-full bg-blue-400 mt-1"></div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-500 text-xs">#{o.id}</span>
+                          <span className="text-gray-700 dark:text-gray-300 truncate">{o.complaint || '—'}</span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          {o.brand} {o.model} {o.plate && `(${o.plate})`} · {o.created_at?.slice(0,10)}
+                          {o.master_name && ` · ${o.master_name}`}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Reminders */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Bell size={15} className="text-amber-500" />
+                <h3 className="font-medium text-gray-900 dark:text-white">
+                  {l==='ru'?'Напоминания':l==='es'?'Recordatorios':'Reminders'}
+                </h3>
+              </div>
+              <ReminderForm clientId={detail.id} onSave={() => loadReminders(detail.id)} />
+              {reminders.length > 0 && (
+                <div className="space-y-1 mt-3 max-h-36 overflow-y-auto">
+                  {reminders.map(r => (
+                    <div key={r.id} className={`flex items-center gap-2 p-2 rounded-lg text-sm ${r.completed ? 'opacity-50' : 'bg-amber-50 dark:bg-amber-900/10'}`}>
+                      <div className="flex-1 min-w-0">
+                        <span className={`font-medium ${r.completed ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>{r.title}</span>
+                        {r.due_date && <span className="text-xs text-gray-400 ml-2">{r.due_date}</span>}
+                        {r.repeat_months > 0 && <span className="text-xs text-indigo-400 ml-1">↻{r.repeat_months}м</span>}
+                      </div>
+                      {!r.completed && (
+                        <button onClick={() => completeReminder(r.id)} className="text-green-500 hover:text-green-600 flex-shrink-0">
+                          <CheckCircle2 size={15} />
+                        </button>
+                      )}
+                      <button onClick={() => deleteReminder(r.id)} className="text-red-400 hover:text-red-500 flex-shrink-0">
+                        <Trash size={13} />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -248,7 +367,7 @@ export default function Clients() {
       {/* Add vehicle modal */}
       <Modal open={modal === 'vehicle'} onClose={() => setModal('detail')} title={t('vehicles.add')}>
         <VehicleForm clientId={detail?.id} onSave={async () => {
-          const { data } = await axios.get(`/api/clients/${detail.id}`);
+          const { data } = await api.get(`/clients/${detail.id}`);
           setDetail(data);
           setModal('detail');
         }} onClose={() => setModal('detail')} />

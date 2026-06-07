@@ -36,6 +36,11 @@ app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/expenses', require('./routes/expenses'));
 app.use('/api/google-calendar', require('./routes/google-calendar'));
 app.use('/api/ai', require('./routes/ai'));
+app.use('/api/search', require('./routes/search'));
+app.use('/api/reminders', require('./routes/reminders'));
+app.use('/api/order-templates', require('./routes/order-templates'));
+app.use('/api/order-photos', require('./routes/order-photos'));
+app.use('/api/training', require('./routes/training'));
 
 app.get('/api/health', (req, res) => res.json({
   status: 'ok',

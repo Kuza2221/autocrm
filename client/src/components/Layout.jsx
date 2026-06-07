@@ -3,6 +3,9 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../App.jsx';
 import AIAssistant from './AIAssistant.jsx';
+import GlobalSearch from './GlobalSearch.jsx';
+import OnboardingTour from './OnboardingTour.jsx';
+import OnboardingChecklist from './OnboardingChecklist.jsx';
 import {
   LayoutDashboard, Users, ClipboardList, Calendar, Package,
   DollarSign, BarChart2, Settings, LogOut, Menu, X, Moon, Sun, Wrench
@@ -47,6 +50,11 @@ export default function Layout({ children }) {
           <span className="font-bold text-lg text-gray-900 dark:text-white">AutoCRM</span>
         </div>
 
+        {/* Global Search */}
+        <div className="px-2 py-2 border-b border-gray-200 dark:border-gray-800">
+          <GlobalSearch />
+        </div>
+
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-2">
           {navItems.map(({ to, icon: Icon, key }) => (
@@ -68,6 +76,9 @@ export default function Layout({ children }) {
             </NavLink>
           ))}
         </nav>
+
+        {/* Onboarding Checklist */}
+        <OnboardingChecklist />
 
         {/* Bottom */}
         <div className="px-2 py-3 border-t border-gray-200 dark:border-gray-800">
@@ -114,6 +125,7 @@ export default function Layout({ children }) {
 
       {/* AI Assistant floating button */}
       <AIAssistant />
+      <OnboardingTour />
     </div>
   );
 }

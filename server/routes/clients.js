@@ -21,6 +21,20 @@ router.get('/', (req, res) => {
   res.json(db.prepare(query).all(...params));
 });
 
+router.get('/birthdays', (req, res) => {
+  const all = db.prepare('SELECT id, name, phone, birthday FROM clients WHERE birthday IS NOT NULL AND birthday != ""').all();
+  const today = new Date();
+  const upcoming = all.filter(c => {
+    try {
+      const bday = new Date(c.birthday);
+      const thisYear = new Date(today.getFullYear(), bday.getMonth(), bday.getDate());
+      const diff = (thisYear - today) / (1000 * 60 * 60 * 24);
+      return diff >= -1 && diff <= 7;
+    } catch { return false; }
+  });
+  res.json(upcoming);
+});
+
 router.get('/:id', (req, res) => {
   const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
   if (!client) return res.status(404).json({ error: 'Not found' });
@@ -37,14 +51,14 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { name, phone, email, notes } = req.body;
-  const result = db.prepare('INSERT INTO clients (name, phone, email, notes) VALUES (?, ?, ?, ?)').run(name, phone, email, notes);
+  const { name, phone, email, notes, birthday } = req.body;
+  const result = db.prepare('INSERT INTO clients (name, phone, email, notes, birthday) VALUES (?, ?, ?, ?, ?)').run(name, phone, email, notes, birthday || null);
   res.json({ id: result.lastInsertRowid });
 });
 
 router.put('/:id', (req, res) => {
-  const { name, phone, email, notes } = req.body;
-  db.prepare('UPDATE clients SET name=?, phone=?, email=?, notes=? WHERE id=?').run(name, phone, email, notes, req.params.id);
+  const { name, phone, email, notes, birthday } = req.body;
+  db.prepare('UPDATE clients SET name=?, phone=?, email=?, notes=?, birthday=? WHERE id=?').run(name, phone, email, notes, birthday || null, req.params.id);
   res.json({ ok: true });
 });
 

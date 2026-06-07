@@ -194,6 +194,32 @@ if (DATABASE_URL) {
         calendar_id TEXT DEFAULT 'primary',
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS reminders (
+        id SERIAL PRIMARY KEY,
+        client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        note TEXT,
+        due_date TEXT,
+        repeat_months INTEGER DEFAULT 0,
+        completed INTEGER DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS order_photos (
+        id SERIAL PRIMARY KEY,
+        order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+        data TEXT,
+        caption TEXT,
+        type TEXT DEFAULT 'other',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS order_templates (
+        id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        complaint TEXT,
+        items TEXT DEFAULT '[]',
+        total_labor REAL DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
     `;
 
     // Run schema creation
@@ -370,6 +396,32 @@ if (DATABASE_URL) {
       updated_at TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS _migrations (key TEXT PRIMARY KEY);
+    CREATE TABLE IF NOT EXISTS reminders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      note TEXT,
+      due_date TEXT,
+      repeat_months INTEGER DEFAULT 0,
+      completed INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS order_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+      data TEXT,
+      caption TEXT,
+      type TEXT DEFAULT 'other',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS order_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      complaint TEXT,
+      items TEXT DEFAULT '[]',
+      total_labor REAL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Migrations
@@ -384,6 +436,9 @@ if (DATABASE_URL) {
   }
   if (!migrated('add_ai_notes')) {
     try { db.exec('ALTER TABLE orders ADD COLUMN ai_notes TEXT'); } catch {}
+  }
+  if (!migrated('add_client_birthday')) {
+    try { db.exec('ALTER TABLE clients ADD COLUMN birthday TEXT'); } catch {}
   }
 
   // Seed default admin
