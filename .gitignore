@@ -8,8 +8,8 @@ client/node_modules/
 server/.env
 *.env.local
 
-# Build output
-client/dist/
+# Build output — NOT ignored (committed for Railway deployment)
+# client/dist/
 client/build/
 
 # Database
