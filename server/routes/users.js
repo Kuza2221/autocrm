@@ -49,27 +49,42 @@ router.delete('/:id', verifyToken, (req, res) => {
 
 // ── REGISTER ────────────────────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
-  const { name, email, password, rememberMe = true, mode = 'create', companyName, inviteCode } = req.body;
-  if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
+  const { name, password, rememberMe = true, mode = 'create', companyName, inviteCode, email: rawEmail } = req.body;
+
+  if (!name || !password) return res.status(400).json({ error: 'All fields required' });
   if (password.length < 6) return res.status(400).json({ error: 'Password min 6 characters' });
+
+  const isJoin = mode === 'join';
+
+  // Owner must provide email; worker email is optional (auto-generated if missing)
+  let email = rawEmail ? rawEmail.trim().toLowerCase() : null;
+  if (!isJoin && !email) return res.status(400).json({ error: 'Email required' });
 
   let companyId = null;
   let userRole = 'mechanic';
-
   const totalUsers = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
 
-  if (mode === 'join') {
+  if (isJoin) {
     if (!inviteCode) return res.status(400).json({ error: 'Invite code required' });
-    const company = db.prepare('SELECT id FROM companies WHERE invite_code=?').get(inviteCode.toUpperCase().trim());
+    const company = db.prepare('SELECT id, invite_code FROM companies WHERE invite_code=?').get(inviteCode.toUpperCase().trim());
     if (!company) return res.status(400).json({ error: 'Invalid invite code' });
     companyId = company.id;
     userRole = 'mechanic';
+
+    // Check name uniqueness within company
+    const nameExists = db.prepare('SELECT id FROM users WHERE LOWER(name)=LOWER(?) AND company_id=?').get(name.trim(), companyId);
+    if (nameExists) return res.status(400).json({ error: 'Name already taken in this company' });
+
+    // Auto-generate internal email if not provided
+    if (!email) {
+      const slug = name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+      email = `${slug}_${company.invite_code.toLowerCase()}_${crypto.randomBytes(4).toString('hex')}@internal.autocrm`;
+    }
   } else {
-    // Create new company
+    // Create new company — owner
     if (!companyName && totalUsers > 0) return res.status(400).json({ error: 'Company name required' });
     const cName = companyName || 'My Company';
 
-    // Generate unique invite code
     let code;
     let attempts = 0;
     do {
@@ -85,21 +100,20 @@ router.post('/register', async (req, res) => {
   }
 
   const vToken = crypto.randomBytes(32).toString('hex');
-  const isAdmin = true; // skip email verification — all users get access immediately
 
   try {
     const result = db.prepare(
       'INSERT INTO users (name, email, password, role, company_id, email_verified, verify_token) VALUES (?,?,?,?,?,?,?)'
-    ).run(name, email, password, userRole, companyId, 1, vToken);
+    ).run(name.trim(), email, password, userRole, companyId, isJoin ? 1 : 0, vToken);
 
-    // If creating company, set owner_id
-    if (mode === 'create' || totalUsers === 0) {
+    if (!isJoin) {
       db.prepare('UPDATE companies SET owner_id=? WHERE id=?').run(result.lastInsertRowid, companyId);
     }
 
-    const user = { id: result.lastInsertRowid, name, email, role: userRole, company_id: companyId };
+    const user = { id: result.lastInsertRowid, name: name.trim(), email, role: userRole, company_id: companyId };
 
-    if (isAdmin) {
+    if (isJoin) {
+      // Worker — immediate access, no email verification
       const accessToken = signAccess(user);
       const refreshToken = signRefresh(user.id, rememberMe);
       db.prepare('INSERT INTO refresh_tokens (token, user_id, expires_at) VALUES (?,?,?)').run(
@@ -107,12 +121,10 @@ router.post('/register', async (req, res) => {
         new Date(Date.now() + (rememberMe ? 30 : 1) * 24 * 60 * 60 * 1000).toISOString()
       );
       res.cookie('rt', refreshToken, cookieOpts(rememberMe));
-
-      const company = db.prepare('SELECT invite_code, name FROM companies WHERE id=?').get(companyId);
-      return res.json({ accessToken, user, invite_code: company.invite_code, company_name: company.name });
+      return res.json({ accessToken, user });
     }
 
-    // Worker joining: send verification email (with timeout so registration never hangs)
+    // Owner — send email verification
     let previewUrl = null;
     try {
       const mail = await Promise.race([
@@ -172,12 +184,40 @@ router.post('/resend-verification', async (req, res) => {
   res.json({ ok: true, previewUrl });
 });
 
-// ── LOGIN ───────────────────────────────────────────────────────────────────
+// ── LOGIN by email (owner/admin) ────────────────────────────────────────────
 router.post('/login', (req, res) => {
   const { email, password, rememberMe = false } = req.body;
   const user = db.prepare('SELECT id, name, email, role, company_id, email_verified FROM users WHERE email=? AND password=?').get(email, password);
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   if (!user.email_verified) return res.status(403).json({ error: 'Email not verified', code: 'EMAIL_NOT_VERIFIED', email });
+
+  const userObj = { id: user.id, name: user.name, email: user.email, role: user.role, company_id: user.company_id };
+  const accessToken = signAccess(userObj);
+  const refreshToken = signRefresh(user.id, rememberMe);
+
+  const expiresAt = new Date(Date.now() + (rememberMe ? 30 : 1) * 24 * 60 * 60 * 1000).toISOString();
+  const deviceHint = req.headers['user-agent']?.slice(0, 120) || 'unknown';
+
+  db.prepare('INSERT OR REPLACE INTO refresh_tokens (user_id, token, expires_at, device_hint) VALUES (?,?,?,?)')
+    .run(user.id, refreshToken, expiresAt, deviceHint);
+
+  res.cookie('rt', refreshToken, cookieOpts(rememberMe));
+  res.json({ accessToken, user: userObj });
+});
+
+// ── LOGIN by name + company code (worker) ───────────────────────────────────
+router.post('/login-worker', (req, res) => {
+  const { name, inviteCode, password, rememberMe = false } = req.body;
+  if (!name || !inviteCode || !password) return res.status(400).json({ error: 'All fields required' });
+
+  const company = db.prepare('SELECT id FROM companies WHERE invite_code=?').get(inviteCode.toUpperCase().trim());
+  if (!company) return res.status(401).json({ error: 'Company not found' });
+
+  const user = db.prepare(
+    'SELECT id, name, email, role, company_id, email_verified FROM users WHERE LOWER(name)=LOWER(?) AND company_id=? AND password=?'
+  ).get(name.trim(), company.id, password);
+
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
   const userObj = { id: user.id, name: user.name, email: user.email, role: user.role, company_id: user.company_id };
   const accessToken = signAccess(userObj);

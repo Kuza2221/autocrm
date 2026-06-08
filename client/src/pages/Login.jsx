@@ -13,6 +13,7 @@ const LANGS = [
 export default function Login() {
   const { login } = useApp();
   const [mode, setMode] = useState('login'); // 'login' | 'register'
+  const [loginType, setLoginType] = useState('email'); // 'email' | 'worker'
   const [regMode, setRegMode] = useState('choose'); // 'choose' | 'create' | 'join'
   const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '', companyName: '', inviteCode: '' });
   const [rememberMe, setRememberMe] = useState(true);
@@ -22,12 +23,13 @@ export default function Login() {
   const [pendingEmail, setPendingEmail] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [resendSent, setResendSent] = useState(false);
-  const [createdCompany, setCreatedCompany] = useState(null); // { invite_code, company_name }
-  const [inviteValidation, setInviteValidation] = useState(null); // { id, name } or null
+  const [createdCompany, setCreatedCompany] = useState(null);
+  const [inviteValidation, setInviteValidation] = useState(null);
   const [inviteChecking, setInviteChecking] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const lang = i18n.language?.slice(0, 2) || 'ru';
+  const t = (ru, en, es) => lang === 'ru' ? ru : lang === 'es' ? es : en;
 
   const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); setError(''); };
 
@@ -36,7 +38,7 @@ export default function Login() {
     localStorage.setItem('lang', code);
   };
 
-  // Auto-validate invite code when 6 chars entered
+  // Auto-validate invite code when 6 chars entered (for join registration)
   useEffect(() => {
     const code = form.inviteCode.trim().toUpperCase();
     if (code.length === 6) {
@@ -55,22 +57,35 @@ export default function Login() {
     setError('');
 
     if (mode === 'register') {
-      if (!form.name || !form.email || !form.password) return setError(lang === 'ru' ? 'Заполните все поля' : 'Fill all fields');
-      if (form.password.length < 6) return setError(lang === 'ru' ? 'Пароль минимум 6 символов' : 'Password min 6 characters');
-      if (form.password !== form.confirm) return setError(lang === 'ru' ? 'Пароли не совпадают' : 'Passwords do not match');
-      if (regMode === 'create' && !form.companyName) return setError(lang === 'ru' ? 'Введите название компании' : 'Enter company name');
-      if (regMode === 'join' && !inviteValidation) return setError(lang === 'ru' ? 'Введите действующий код приглашения' : 'Enter a valid invite code');
+      if (!form.name || !form.password) return setError(t('Заполните все поля', 'Fill all fields', 'Complete todos los campos'));
+      if (form.password.length < 6) return setError(t('Пароль минимум 6 символов', 'Password min 6 characters', 'Contraseña mínimo 6 caracteres'));
+      if (form.password !== form.confirm) return setError(t('Пароли не совпадают', 'Passwords do not match', 'Las contraseñas no coinciden'));
+      if (regMode === 'create' && !form.email) return setError(t('Введите email', 'Enter email', 'Ingrese email'));
+      if (regMode === 'create' && !form.companyName) return setError(t('Введите название компании', 'Enter company name', 'Ingrese el nombre de la empresa'));
+      if (regMode === 'join' && !inviteValidation) return setError(t('Введите действующий код', 'Enter a valid invite code', 'Ingrese un código válido'));
     }
 
     setLoading(true);
     try {
       if (mode === 'login') {
-        const { data } = await api.post('/users/login', { email: form.email, password: form.password, rememberMe });
-        login(data);
+        if (loginType === 'worker') {
+          // Worker login: name + company code + password
+          const { data } = await api.post('/users/login-worker', {
+            name: form.name,
+            inviteCode: form.inviteCode.trim().toUpperCase(),
+            password: form.password,
+            rememberMe,
+          });
+          login(data);
+        } else {
+          // Owner login: email + password
+          const { data } = await api.post('/users/login', { email: form.email, password: form.password, rememberMe });
+          login(data);
+        }
       } else {
         const payload = {
           name: form.name,
-          email: form.email,
+          email: regMode === 'create' ? form.email : undefined,
           password: form.password,
           rememberMe,
           mode: regMode === 'join' ? 'join' : 'create',
@@ -82,7 +97,6 @@ export default function Login() {
           setPendingEmail(data.email);
           setPreviewUrl(data.previewUrl || null);
         } else if (data.invite_code) {
-          // Company created — show invite code screen
           setCreatedCompany({ invite_code: data.invite_code, company_name: data.company_name });
           login(data);
         } else {
@@ -96,11 +110,11 @@ export default function Login() {
       if (code === 'EMAIL_NOT_VERIFIED') {
         setPendingEmail(errEmail);
       } else if (mode === 'login') {
-        setError(lang === 'ru' ? 'Неверный email или пароль' : 'Invalid email or password');
-      } else if (msg.includes('exists')) {
-        setError(lang === 'ru' ? 'Этот email уже занят' : 'Email already taken');
+        setError(t('Неверные данные для входа', 'Invalid credentials', 'Credenciales inválidas'));
+      } else if (msg.includes('exists') || msg.includes('taken')) {
+        setError(t('Такое имя или email уже занято', 'Name or email already taken', 'Nombre o email ya en uso'));
       } else {
-        setError(msg || (lang === 'ru' ? 'Ошибка' : 'Error'));
+        setError(msg || t('Ошибка', 'Error', 'Error'));
       }
     } finally {
       setLoading(false);
@@ -119,6 +133,7 @@ export default function Login() {
     setMode(m => m === 'login' ? 'register' : 'login');
     setError('');
     setRegMode('choose');
+    setLoginType('email');
     setForm({ name: '', email: '', password: '', confirm: '', companyName: '', inviteCode: '' });
     setInviteValidation(null);
   };
@@ -129,7 +144,7 @@ export default function Login() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Pending email verification screen
+  // ── Pending email verification screen ────────────────────────────────────
   if (pendingEmail) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-950 p-4">
@@ -137,30 +152,30 @@ export default function Login() {
           <div className="card p-8 text-center shadow-xl">
             <div className="text-5xl mb-4">📧</div>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              {lang === 'ru' ? 'Проверьте почту' : lang === 'es' ? 'Revise su correo' : 'Check your email'}
+              {t('Проверьте почту', 'Check your email', 'Revise su correo')}
             </h2>
             <p className="text-gray-500 dark:text-gray-400 mb-1">
-              {lang === 'ru' ? 'Мы отправили письмо на' : lang === 'es' ? 'Enviamos un correo a' : 'We sent an email to'}
+              {t('Мы отправили письмо на', 'We sent an email to', 'Enviamos un correo a')}
             </p>
             <p className="font-semibold text-gray-900 dark:text-white mb-4">{pendingEmail}</p>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              {lang === 'ru' ? 'Нажмите ссылку в письме чтобы подтвердить email и войти.' : lang === 'es' ? 'Haga clic en el enlace del correo para verificar su email.' : 'Click the link in the email to verify your email and sign in.'}
+              {t('Нажмите ссылку в письме чтобы подтвердить email и войти.', 'Click the link in the email to verify and sign in.', 'Haga clic en el enlace para verificar su email.')}
             </p>
             {previewUrl && (
               <a href={previewUrl} target="_blank" rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 w-full mb-3 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors">
-                📧 {lang === 'ru' ? 'Открыть письмо' : lang === 'es' ? 'Abrir correo' : 'Open email'}
+                📧 {t('Открыть письмо', 'Open email', 'Abrir correo')}
               </a>
             )}
             {resendSent ? (
-              <p className="text-green-600 text-sm mb-4">{lang === 'ru' ? '✅ Письмо отправлено повторно' : '✅ Email resent'}</p>
+              <p className="text-green-600 text-sm mb-4">✅ {t('Письмо отправлено повторно', 'Email resent', 'Correo reenviado')}</p>
             ) : (
               <button onClick={handleResend} className="btn-secondary w-full mb-3">
-                {lang === 'ru' ? 'Отправить повторно' : lang === 'es' ? 'Reenviar' : 'Resend email'}
+                {t('Отправить повторно', 'Resend email', 'Reenviar')}
               </button>
             )}
             <button onClick={() => { setPendingEmail(null); setPreviewUrl(null); setResendSent(false); }} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
-              ← {lang === 'ru' ? 'Назад' : lang === 'es' ? 'Volver' : 'Back'}
+              ← {t('Назад', 'Back', 'Volver')}
             </button>
           </div>
         </div>
@@ -168,7 +183,7 @@ export default function Login() {
     );
   }
 
-  // Company created — show invite code
+  // ── Company created — show invite code ───────────────────────────────────
   if (createdCompany) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-950 p-4">
@@ -176,16 +191,15 @@ export default function Login() {
           <div className="card p-8 text-center shadow-xl">
             <div className="text-5xl mb-4">🏢</div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
-              {lang === 'ru' ? 'Компания создана!' : lang === 'es' ? '¡Empresa creada!' : 'Company created!'}
+              {t('Компания создана!', 'Company created!', '¡Empresa creada!')}
             </h2>
             <p className="text-gray-500 dark:text-gray-400 mb-1 text-sm">{createdCompany.company_name}</p>
             <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
-              {lang === 'ru' ? 'Добро пожаловать в AutoCRM' : lang === 'es' ? 'Bienvenido a AutoCRM' : 'Welcome to AutoCRM'}
+              {t('Добро пожаловать в AutoCRM', 'Welcome to AutoCRM', 'Bienvenido a AutoCRM')}
             </p>
-
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-5 mb-4">
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                {lang === 'ru' ? 'Код приглашения для сотрудников:' : lang === 'es' ? 'Código de invitación para empleados:' : 'Invite code for employees:'}
+                {t('Код приглашения для сотрудников:', 'Invite code for employees:', 'Código de invitación para empleados:')}
               </p>
               <div className="flex items-center justify-center gap-3 mt-1">
                 <span className="text-3xl font-mono font-bold tracking-widest text-blue-600 dark:text-blue-400">
@@ -196,17 +210,11 @@ export default function Login() {
                 </button>
               </div>
             </div>
-
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              {lang === 'ru'
-                ? 'Поделитесь этим кодом с сотрудниками, чтобы они могли зарегистрироваться'
-                : lang === 'es'
-                ? 'Comparta este código con sus empleados para que puedan registrarse'
-                : 'Share this code with employees so they can register'}
+              {t('Поделитесь этим кодом с сотрудниками, чтобы они могли зарегистрироваться', 'Share this code with employees so they can register', 'Comparta este código con sus empleados para que puedan registrarse')}
             </p>
-
             <button onClick={() => setCreatedCompany(null)} className="btn-primary w-full justify-center py-2.5">
-              {lang === 'ru' ? 'Войти в систему' : lang === 'es' ? 'Entrar al sistema' : 'Enter the app'}
+              {t('Войти в систему', 'Enter the app', 'Entrar al sistema')}
             </button>
           </div>
         </div>
@@ -227,50 +235,104 @@ export default function Login() {
         </div>
 
         <div className="card p-8 shadow-xl">
-          {mode === 'login' ? (
+
+          {/* ── LOGIN ── */}
+          {mode === 'login' && (
             <>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-                {lang === 'ru' ? 'Войти в AutoCRM' : lang === 'es' ? 'Iniciar sesión' : 'Sign in to AutoCRM'}
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+                {t('Войти в AutoCRM', 'Sign in to AutoCRM', 'Iniciar sesión')}
               </h2>
+
+              {/* Login type tabs */}
+              <div className="flex rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 mb-5">
+                <button
+                  onClick={() => { setLoginType('email'); setError(''); }}
+                  className={`flex-1 py-2 text-sm font-medium transition-colors ${loginType === 'email' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+                  {t('Владелец / Email', 'Owner / Email', 'Propietario / Email')}
+                </button>
+                <button
+                  onClick={() => { setLoginType('worker'); setError(''); }}
+                  className={`flex-1 py-2 text-sm font-medium transition-colors ${loginType === 'worker' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+                  {t('Сотрудник', 'Employee', 'Empleado')}
+                </button>
+              </div>
+
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="label">Email *</label>
-                  <input className="input" type="email" value={form.email}
-                    onChange={e => set('email', e.target.value)}
-                    autoComplete="email" required autoFocus />
-                </div>
-                <div>
-                  <label className="label">{lang === 'ru' ? 'Пароль' : lang === 'es' ? 'Contraseña' : 'Password'} *</label>
-                  <div className="relative">
-                    <input className="input pr-10" type={showPass ? 'text' : 'password'}
-                      value={form.password}
-                      onChange={e => set('password', e.target.value)}
-                      autoComplete="current-password" required />
-                    <button type="button" onClick={() => setShowPass(s => !s)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                      {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
+                {loginType === 'email' ? (
+                  <>
+                    <div>
+                      <label className="label">Email *</label>
+                      <input className="input" type="email" value={form.email}
+                        onChange={e => set('email', e.target.value)}
+                        autoComplete="email" required autoFocus />
+                    </div>
+                    <div>
+                      <label className="label">{t('Пароль', 'Password', 'Contraseña')} *</label>
+                      <div className="relative">
+                        <input className="input pr-10" type={showPass ? 'text' : 'password'}
+                          value={form.password}
+                          onChange={e => set('password', e.target.value)}
+                          autoComplete="current-password" required />
+                        <button type="button" onClick={() => setShowPass(s => !s)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                          {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="label">{t('Код СТО', 'Company code', 'Código de empresa')} *</label>
+                      <input className="input font-mono tracking-widest uppercase"
+                        value={form.inviteCode}
+                        onChange={e => set('inviteCode', e.target.value.toUpperCase().slice(0, 6))}
+                        placeholder="XXXXXX" maxLength={6} autoFocus required />
+                    </div>
+                    <div>
+                      <label className="label">{t('Имя', 'Name', 'Nombre')} *</label>
+                      <input className="input" value={form.name}
+                        onChange={e => set('name', e.target.value)}
+                        placeholder={t('Иван Иванов', 'John Smith', 'Juan García')} required />
+                    </div>
+                    <div>
+                      <label className="label">{t('Пароль', 'Password', 'Contraseña')} *</label>
+                      <div className="relative">
+                        <input className="input pr-10" type={showPass ? 'text' : 'password'}
+                          value={form.password}
+                          onChange={e => set('password', e.target.value)}
+                          autoComplete="current-password" required />
+                        <button type="button" onClick={() => setShowPass(s => !s)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                          {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
                 <label className="flex items-center gap-2 cursor-pointer select-none">
                   <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} className="w-4 h-4 rounded accent-blue-600" />
                   <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {lang === 'ru' ? 'Не выходить 30 дней' : lang === 'es' ? 'Mantener sesión 30 días' : 'Stay signed in for 30 days'}
+                    {t('Не выходить 30 дней', 'Stay signed in for 30 days', 'Mantener sesión 30 días')}
                   </span>
                 </label>
                 {error && <p className="text-red-500 text-sm">{error}</p>}
                 <button type="submit" disabled={loading} className="w-full btn-primary justify-center py-2.5">
-                  {loading ? (lang === 'ru' ? 'Загрузка...' : 'Loading...') : (lang === 'ru' ? 'Войти' : lang === 'es' ? 'Entrar' : 'Sign in')}
+                  {loading ? t('Загрузка...', 'Loading...', 'Cargando...') : t('Войти', 'Sign in', 'Entrar')}
                 </button>
               </form>
             </>
-          ) : regMode === 'choose' ? (
+          )}
+
+          {/* ── REGISTER: choose ── */}
+          {mode === 'register' && regMode === 'choose' && (
             <>
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                {lang === 'ru' ? 'Как вы хотите начать?' : lang === 'es' ? '¿Cómo desea comenzar?' : 'How would you like to start?'}
+                {t('Как вы хотите начать?', 'How would you like to start?', '¿Cómo desea comenzar?')}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                {lang === 'ru' ? 'Создайте свою компанию или присоединитесь к существующей' : lang === 'es' ? 'Cree su empresa o únase a una existente' : 'Create your company or join an existing one'}
+                {t('Создайте свою компанию или присоединитесь к существующей', 'Create your company or join an existing one', 'Cree su empresa o únase a una existente')}
               </p>
               <div className="space-y-3">
                 <button onClick={() => setRegMode('create')}
@@ -280,10 +342,10 @@ export default function Login() {
                   </div>
                   <div>
                     <div className="font-semibold text-gray-900 dark:text-white">
-                      {lang === 'ru' ? 'Создать компанию' : lang === 'es' ? 'Crear empresa' : 'Create company'}
+                      {t('Создать компанию', 'Create company', 'Crear empresa')}
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
-                      {lang === 'ru' ? 'Открыть новый аккаунт СТО' : lang === 'es' ? 'Abrir una nueva cuenta de taller' : 'Open a new auto service account'}
+                      {t('Открыть новый аккаунт СТО', 'Open a new auto service account', 'Abrir una nueva cuenta de taller')}
                     </div>
                   </div>
                 </button>
@@ -294,72 +356,80 @@ export default function Login() {
                   </div>
                   <div>
                     <div className="font-semibold text-gray-900 dark:text-white">
-                      {lang === 'ru' ? 'Присоединиться' : lang === 'es' ? 'Unirse' : 'Join company'}
+                      {t('Присоединиться', 'Join company', 'Unirse')}
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
-                      {lang === 'ru' ? 'Есть код приглашения?' : lang === 'es' ? '¿Tienes un código de invitación?' : 'Have an invite code?'}
+                      {t('Есть код приглашения?', 'Have an invite code?', '¿Tienes un código de invitación?')}
                     </div>
                   </div>
                 </button>
               </div>
             </>
-          ) : (
+          )}
+
+          {/* ── REGISTER: form ── */}
+          {mode === 'register' && (regMode === 'create' || regMode === 'join') && (
             <>
               <div className="flex items-center gap-2 mb-5">
-                <button onClick={() => { setRegMode('choose'); setError(''); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                  ←
-                </button>
+                <button onClick={() => { setRegMode('choose'); setError(''); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">←</button>
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                   {regMode === 'create'
-                    ? (lang === 'ru' ? 'Создать компанию' : lang === 'es' ? 'Crear empresa' : 'Create company')
-                    : (lang === 'ru' ? 'Присоединиться к компании' : lang === 'es' ? 'Unirse a empresa' : 'Join company')}
+                    ? t('Создать компанию', 'Create company', 'Crear empresa')
+                    : t('Присоединиться к компании', 'Join company', 'Unirse a empresa')}
                 </h2>
               </div>
               <form onSubmit={handleSubmit} className="space-y-4">
-                {regMode === 'create' && (
-                  <div>
-                    <label className="label">{lang === 'ru' ? 'Название компании' : lang === 'es' ? 'Nombre de la empresa' : 'Company name'} *</label>
-                    <input className="input" value={form.companyName}
-                      onChange={e => set('companyName', e.target.value)}
-                      placeholder={lang === 'ru' ? 'СТО Иванов' : lang === 'es' ? 'Taller García' : 'Smith Auto Service'}
-                      required autoFocus />
-                  </div>
-                )}
+
+                {/* JOIN: code first */}
                 {regMode === 'join' && (
                   <div>
-                    <label className="label">{lang === 'ru' ? 'Код приглашения' : lang === 'es' ? 'Código de invitación' : 'Invite code'} *</label>
+                    <label className="label">{t('Код СТО', 'Company code', 'Código de empresa')} *</label>
                     <input className="input font-mono tracking-widest uppercase"
                       value={form.inviteCode}
                       onChange={e => set('inviteCode', e.target.value.toUpperCase().slice(0, 6))}
-                      placeholder="XXXXXX"
-                      maxLength={6}
-                      autoFocus />
-                    {inviteChecking && <p className="text-xs text-gray-400 mt-1">{lang === 'ru' ? 'Проверяем...' : 'Checking...'}</p>}
+                      placeholder="XXXXXX" maxLength={6} autoFocus />
+                    {inviteChecking && <p className="text-xs text-gray-400 mt-1">{t('Проверяем...', 'Checking...', 'Verificando...')}</p>}
                     {inviteValidation && (
                       <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
-                        <Check size={12} /> {lang === 'ru' ? 'Компания:' : 'Company:'} <strong>{inviteValidation.name}</strong>
+                        <Check size={12} /> {t('Компания:', 'Company:', 'Empresa:')} <strong>{inviteValidation.name}</strong>
                       </p>
                     )}
                     {form.inviteCode.length === 6 && !inviteChecking && !inviteValidation && (
-                      <p className="text-xs text-red-500 mt-1">{lang === 'ru' ? 'Код не найден' : 'Code not found'}</p>
+                      <p className="text-xs text-red-500 mt-1">{t('Код не найден', 'Code not found', 'Código no encontrado')}</p>
                     )}
                   </div>
                 )}
+
+                {/* CREATE: company name */}
+                {regMode === 'create' && (
+                  <div>
+                    <label className="label">{t('Название компании', 'Company name', 'Nombre de la empresa')} *</label>
+                    <input className="input" value={form.companyName}
+                      onChange={e => set('companyName', e.target.value)}
+                      placeholder={t('СТО Иванов', 'Smith Auto Service', 'Taller García')}
+                      required autoFocus />
+                  </div>
+                )}
+
                 <div>
-                  <label className="label">{lang === 'ru' ? 'Имя' : lang === 'es' ? 'Nombre' : 'Name'} *</label>
+                  <label className="label">{t('Имя', 'Name', 'Nombre')} *</label>
                   <input className="input" value={form.name}
                     onChange={e => set('name', e.target.value)}
-                    placeholder={lang === 'ru' ? 'Иван Иванов' : lang === 'es' ? 'Juan García' : 'John Smith'}
-                    required />
+                    placeholder={t('Иван Иванов', 'John Smith', 'Juan García')} required />
                 </div>
+
+                {/* Only owner needs email */}
+                {regMode === 'create' && (
+                  <div>
+                    <label className="label">Email *</label>
+                    <input className="input" type="email" value={form.email}
+                      onChange={e => set('email', e.target.value)}
+                      autoComplete="email" required />
+                  </div>
+                )}
+
                 <div>
-                  <label className="label">Email *</label>
-                  <input className="input" type="email" value={form.email}
-                    onChange={e => set('email', e.target.value)}
-                    autoComplete="email" required />
-                </div>
-                <div>
-                  <label className="label">{lang === 'ru' ? 'Пароль' : lang === 'es' ? 'Contraseña' : 'Password'} *</label>
+                  <label className="label">{t('Пароль', 'Password', 'Contraseña')} *</label>
                   <div className="relative">
                     <input className="input pr-10" type={showPass ? 'text' : 'password'}
                       value={form.password}
@@ -372,32 +442,40 @@ export default function Login() {
                   </div>
                 </div>
                 <div>
-                  <label className="label">{lang === 'ru' ? 'Повторите пароль' : lang === 'es' ? 'Confirmar contraseña' : 'Confirm password'} *</label>
+                  <label className="label">{t('Повторите пароль', 'Confirm password', 'Confirmar contraseña')} *</label>
                   <input className="input" type={showPass ? 'text' : 'password'}
                     value={form.confirm}
                     onChange={e => set('confirm', e.target.value)}
                     autoComplete="new-password" required />
                 </div>
+
+                {/* Join hint */}
+                {regMode === 'join' && (
+                  <p className="text-xs text-gray-400 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
+                    {t('Для входа используйте: Код СТО + Имя + Пароль', 'To sign in use: Company code + Name + Password', 'Para entrar use: Código + Nombre + Contraseña')}
+                  </p>
+                )}
+
                 <label className="flex items-center gap-2 cursor-pointer select-none">
                   <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} className="w-4 h-4 rounded accent-blue-600" />
                   <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {lang === 'ru' ? 'Не выходить 30 дней' : lang === 'es' ? 'Mantener sesión 30 días' : 'Stay signed in for 30 days'}
+                    {t('Не выходить 30 дней', 'Stay signed in for 30 days', 'Mantener sesión 30 días')}
                   </span>
                 </label>
                 {error && <p className="text-red-500 text-sm">{error}</p>}
                 <button type="submit" disabled={loading} className="w-full btn-primary justify-center py-2.5">
-                  {loading ? (lang === 'ru' ? 'Загрузка...' : 'Loading...') : (lang === 'ru' ? 'Зарегистрироваться' : lang === 'es' ? 'Registrarse' : 'Register')}
+                  {loading ? t('Загрузка...', 'Loading...', 'Cargando...') : t('Зарегистрироваться', 'Register', 'Registrarse')}
                 </button>
               </form>
             </>
           )}
 
-          {/* Switch mode */}
+          {/* Switch login/register */}
           <div className="mt-4 text-center">
             <button onClick={switchMode} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
               {mode === 'login'
-                ? (lang === 'ru' ? 'Нет аккаунта? Зарегистрироваться' : lang === 'es' ? '¿No tienes cuenta? Regístrate' : "Don't have an account? Sign up")
-                : (lang === 'ru' ? 'Уже есть аккаунт? Войти' : lang === 'es' ? '¿Ya tienes cuenta? Inicia sesión' : 'Already have an account? Sign in')}
+                ? t('Нет аккаунта? Зарегистрироваться', "Don't have an account? Sign up", '¿No tienes cuenta? Regístrate')
+                : t('Уже есть аккаунт? Войти', 'Already have an account? Sign in', '¿Ya tienes cuenta? Inicia sesión')}
             </button>
           </div>
 
