@@ -22,7 +22,7 @@ export default function Analytics() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('analytics.title')}</h1>
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
           {['week', 'month', 'year'].map(p => (

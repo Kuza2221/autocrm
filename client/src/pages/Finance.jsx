@@ -90,7 +90,7 @@ export default function Finance() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('finance.title')}</h1>
         <button onClick={() => setModal('expense')} className="btn-primary">
           <Plus size={16} /> {t('finance.addExpense')}
