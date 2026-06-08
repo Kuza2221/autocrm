@@ -42,6 +42,7 @@ app.use('/api/reminders', require('./routes/reminders'));
 app.use('/api/order-templates', require('./routes/order-templates'));
 app.use('/api/order-photos', require('./routes/order-photos'));
 app.use('/api/training', require('./routes/training'));
+app.use('/api/schedules', require('./routes/schedules'));
 
 app.get('/api/health', (req, res) => res.json({
   status: 'ok',

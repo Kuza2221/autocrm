@@ -237,6 +237,16 @@ if (DATABASE_URL) {
         owner_id INTEGER,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS mechanic_schedules (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        company_id INTEGER,
+        day_of_week INTEGER NOT NULL,
+        start_time TEXT NOT NULL DEFAULT '09:00',
+        end_time TEXT NOT NULL DEFAULT '18:00',
+        is_available INTEGER DEFAULT 1,
+        UNIQUE(user_id, day_of_week)
+      );
     `;
 
     // Run schema creation
@@ -258,6 +268,7 @@ if (DATABASE_URL) {
       pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS started_at TEXT`).catch(()=>{});
       pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS completed_at TEXT`).catch(()=>{});
       pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS worker_notes TEXT`).catch(()=>{});
+      pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS specialization TEXT DEFAULT ''`).catch(()=>{});
       // Multi-tenancy: add company_id to all data tables
       const dataTables = ['users','clients','vehicles','orders','parts','appointments','expenses','reminders','order_photos','order_templates','work_logs'];
       for (const t of dataTables) {
@@ -495,6 +506,23 @@ if (DATABASE_URL) {
     try { db.exec('ALTER TABLE orders ADD COLUMN started_at TEXT'); } catch {}
     try { db.exec('ALTER TABLE orders ADD COLUMN completed_at TEXT'); } catch {}
     try { db.exec('ALTER TABLE orders ADD COLUMN worker_notes TEXT'); } catch {}
+  }
+  if (!migrated('add_specialization')) {
+    try { db.exec('ALTER TABLE users ADD COLUMN specialization TEXT DEFAULT ""'); } catch {}
+  }
+  if (!migrated('mechanic_schedules')) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mechanic_schedules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        company_id INTEGER,
+        day_of_week INTEGER NOT NULL,
+        start_time TEXT NOT NULL DEFAULT '09:00',
+        end_time TEXT NOT NULL DEFAULT '18:00',
+        is_available INTEGER DEFAULT 1,
+        UNIQUE(user_id, day_of_week)
+      )
+    `);
   }
   if (!migrated('add_company_id')) {
     const tables = ['users','clients','vehicles','orders','parts','appointments','expenses','reminders','order_photos','order_templates','work_logs'];

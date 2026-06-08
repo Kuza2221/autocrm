@@ -8,7 +8,7 @@ import OnboardingTour from './OnboardingTour.jsx';
 import OnboardingChecklist from './OnboardingChecklist.jsx';
 import {
   LayoutDashboard, Users, ClipboardList, Calendar, Package,
-  DollarSign, BarChart2, Settings, LogOut, Menu, X, Moon, Sun, Wrench
+  DollarSign, BarChart2, Settings, LogOut, Menu, X, Moon, Sun, Wrench, CalendarClock
 } from 'lucide-react';
 
 const navItems = [
@@ -19,6 +19,7 @@ const navItems = [
   { to: '/warehouse', icon: Package, key: 'warehouse' },
   { to: '/finance', icon: DollarSign, key: 'finance' },
   { to: '/analytics', icon: BarChart2, key: 'analytics' },
+  { to: '/schedule', icon: CalendarClock, key: 'schedule' },
   { to: '/settings', icon: Settings, key: 'settings' },
 ];
 
@@ -125,7 +126,7 @@ export default function Layout({ children }) {
 
       {/* AI Assistant floating button */}
       <AIAssistant />
-      <OnboardingTour />
+      <OnboardingTour role={user?.role} />
     </div>
   );
 }

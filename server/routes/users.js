@@ -32,7 +32,7 @@ function issueTokens(user, rememberMe, req, res) {
 
 // ── List users ───────────────────────────────────────────────────────────────
 router.get('/', verifyToken, (req, res) => {
-  res.json(db.prepare('SELECT id, name, email, role, created_at FROM users WHERE company_id=? ORDER BY name').all(req.user.company_id));
+  res.json(db.prepare('SELECT id, name, email, role, specialization, created_at FROM users WHERE company_id=? ORDER BY name').all(req.user.company_id));
 });
 
 // ── Create user (admin) ──────────────────────────────────────────────────────
@@ -48,8 +48,9 @@ router.post('/', verifyToken, (req, res) => {
 
 // ── Update user ──────────────────────────────────────────────────────────────
 router.put('/:id', verifyToken, (req, res) => {
-  const { name, email, role } = req.body;
-  db.prepare('UPDATE users SET name=?, email=?, role=? WHERE id=? AND company_id=?').run(name, email, role, req.params.id, req.user.company_id);
+  const { name, email, role, specialization } = req.body;
+  db.prepare('UPDATE users SET name=?, email=?, role=?, specialization=? WHERE id=? AND company_id=?')
+    .run(name, email, role, specialization || '', req.params.id, req.user.company_id);
   res.json({ ok: true });
 });
 

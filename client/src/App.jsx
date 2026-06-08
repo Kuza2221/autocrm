@@ -10,16 +10,17 @@ import Warehouse from './pages/Warehouse.jsx';
 import Finance from './pages/Finance.jsx';
 import Analytics from './pages/Analytics.jsx';
 import Settings from './pages/Settings.jsx';
+import Schedule from './pages/Schedule.jsx';
 import api, { setToken } from './api.js';
 
 export const AppContext = createContext(null);
 export function useApp() { return useContext(AppContext); }
 
 const PERMISSIONS = {
-  admin:       ['dashboard','clients','orders','calendar','warehouse','finance','analytics','settings'],
-  manager:     ['dashboard','clients','orders','calendar','warehouse','finance','analytics'],
+  admin:       ['dashboard','clients','orders','calendar','warehouse','finance','analytics','settings','schedule'],
+  manager:     ['dashboard','clients','orders','calendar','warehouse','finance','analytics','schedule'],
   receptionist:['dashboard','clients','orders','calendar'],
-  mechanic:    ['dashboard','orders'],
+  mechanic:    ['dashboard','orders','warehouse','schedule'],
 };
 
 export function canAccess(role, resource) {
@@ -97,6 +98,7 @@ export default function App() {
               <Route path="/finance" element={<Finance />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/schedule" element={<Schedule />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </Layout>

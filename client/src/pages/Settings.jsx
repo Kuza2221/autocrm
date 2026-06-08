@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import api from '../api.js';
-import { Plus, Trash2, Globe, Moon, Sun, Calendar, Bot, Sparkles, ExternalLink, CheckCircle, AlertCircle, Key, Building2, Copy, Check, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Globe, Moon, Sun, Calendar, Bot, Sparkles, ExternalLink, CheckCircle, AlertCircle, Key, Building2, Copy, Check, RefreshCw, Edit2 } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
 import { useApp } from '../App.jsx';
 import i18n from '../i18n/index.js';
@@ -74,7 +74,16 @@ export default function Settings() {
   const [codeCopied, setCodeCopied] = useState(false);
   const [regenLoading, setRegenLoading] = useState(false);
 
+  const [editingSpec, setEditingSpec] = useState(null); // { id, value }
+
   const load = () => api.get('/users').then(r => setUsers(r.data));
+
+  const saveSpecialization = async (id, specialization) => {
+    const u = users.find(x => x.id === id);
+    await api.put(`/users/${id}`, { name: u.name, email: u.email, role: u.role, specialization });
+    setEditingSpec(null);
+    load();
+  };
   const loadCompany = () => api.get('/companies/me').then(r => { setCompany(r.data); setCompanyNameEdit(r.data.name); }).catch(() => {});
 
   useEffect(() => {
@@ -374,21 +383,48 @@ export default function Settings() {
         </div>
         <div className="divide-y divide-gray-100 dark:divide-gray-700">
           {users.map(u => (
-            <div key={u.id} className="flex items-center gap-3 px-5 py-3">
-              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold">
-                {u.name?.[0]?.toUpperCase()}
+            <div key={u.id} className="px-5 py-3">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                  {u.name?.[0]?.toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm text-gray-900 dark:text-white">{u.name}</div>
+                  <div className="text-xs text-gray-400">{u.email}</div>
+                </div>
+                <span className="badge bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs">
+                  {t(`settings.roles.${u.role}`, u.role)}
+                </span>
+                {user?.role === 'admin' && (u.role === 'mechanic' || u.role === 'manager') && (
+                  <button onClick={() => setEditingSpec({ id: u.id, value: u.specialization || '' })}
+                    className="p-1 text-gray-400 hover:text-blue-600" title={lang === 'ru' ? 'Специализация' : 'Specialization'}>
+                    <Edit2 size={13} />
+                  </button>
+                )}
+                {u.id !== user?.id && (
+                  <button onClick={() => deleteUser(u.id)} className="text-gray-300 hover:text-red-500">
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm text-gray-900 dark:text-white">{u.name}</div>
-                <div className="text-xs text-gray-400">{u.email}</div>
-              </div>
-              <span className="badge bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs">
-                {t(`settings.roles.${u.role}`, u.role)}
-              </span>
-              {u.id !== user?.id && (
-                <button onClick={() => deleteUser(u.id)} className="text-gray-300 hover:text-red-500 ml-1">
-                  <Trash2 size={15} />
-                </button>
+              {/* Specialization display */}
+              {u.specialization && editingSpec?.id !== u.id && (
+                <div className="ml-11 mt-1">
+                  <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full">{u.specialization}</span>
+                </div>
+              )}
+              {/* Specialization edit */}
+              {editingSpec?.id === u.id && (
+                <div className="ml-11 mt-2 flex gap-2">
+                  <input className="input flex-1 text-sm py-1.5" value={editingSpec.value}
+                    onChange={e => setEditingSpec(s => ({ ...s, value: e.target.value }))}
+                    placeholder={lang === 'ru' ? 'напр. Двигатели, ТО, Электрика' : 'e.g. Engines, Service, Electrics'}
+                    autoFocus />
+                  <button onClick={() => saveSpecialization(u.id, editingSpec.value)} className="btn-primary py-1.5 text-xs">
+                    {lang === 'ru' ? 'Сохранить' : 'Save'}
+                  </button>
+                  <button onClick={() => setEditingSpec(null)} className="btn-secondary py-1.5 text-xs">✕</button>
+                </div>
               )}
             </div>
           ))}
