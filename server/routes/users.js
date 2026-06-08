@@ -85,12 +85,12 @@ router.post('/register', async (req, res) => {
   }
 
   const vToken = crypto.randomBytes(32).toString('hex');
-  const isAdmin = (userRole === 'admin');
+  const isAdmin = true; // skip email verification — all users get access immediately
 
   try {
     const result = db.prepare(
       'INSERT INTO users (name, email, password, role, company_id, email_verified, verify_token) VALUES (?,?,?,?,?,?,?)'
-    ).run(name, email, password, userRole, companyId, isAdmin ? 1 : 0, vToken);
+    ).run(name, email, password, userRole, companyId, 1, vToken);
 
     // If creating company, set owner_id
     if (mode === 'create' || totalUsers === 0) {
