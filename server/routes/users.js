@@ -112,10 +112,13 @@ router.post('/register', async (req, res) => {
       return res.json({ accessToken, user, invite_code: company.invite_code, company_name: company.name });
     }
 
-    // Worker joining: send verification email
+    // Worker joining: send verification email (with timeout so registration never hangs)
     let previewUrl = null;
     try {
-      const mail = await sendVerificationEmail(email, name, vToken);
+      const mail = await Promise.race([
+        sendVerificationEmail(email, name, vToken),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Email timeout')), 8000))
+      ]);
       previewUrl = mail.previewUrl || null;
     } catch(e) { console.error('Email send failed:', e.message); }
 
