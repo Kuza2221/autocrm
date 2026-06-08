@@ -70,6 +70,8 @@ export default function Login() {
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState(null);
+  const [resendSent, setResendSent] = useState(false);
 
   const lang = i18n.language?.slice(0, 2) || 'ru';
   const tx = T[lang] || T.ru;
@@ -98,15 +100,34 @@ export default function Login() {
         ? { email: form.email, password: form.password, rememberMe }
         : { name: form.name, email: form.email, password: form.password, rememberMe };
       const { data } = await api.post(endpoint, payload);
-      login(data);
+      if (data.pending) {
+        setPendingEmail(data.email);
+      } else {
+        login(data);
+      }
     } catch (err) {
       const msg = err.response?.data?.error || '';
-      if (mode === 'login') setError(tx.err_invalid);
-      else if (msg.includes('exists')) setError(tx.err_exists);
-      else setError(msg || tx.err_fields);
+      const code = err.response?.data?.code || '';
+      const errEmail = err.response?.data?.email || form.email;
+      if (code === 'EMAIL_NOT_VERIFIED') {
+        setPendingEmail(errEmail);
+      } else if (mode === 'login') {
+        setError(tx.err_invalid);
+      } else if (msg.includes('exists')) {
+        setError(tx.err_exists);
+      } else {
+        setError(msg || tx.err_fields);
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleResend = async () => {
+    try {
+      await api.post('/users/resend-verification', { email: pendingEmail });
+      setResendSent(true);
+    } catch {}
   };
 
   const switchMode = () => {
@@ -114,6 +135,38 @@ export default function Login() {
     setError('');
     setForm({ name: '', email: '', password: '', confirm: '' });
   };
+
+  if (pendingEmail) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-950 p-4">
+        <div className="w-full max-w-md">
+          <div className="card p-8 text-center shadow-xl">
+            <div className="text-5xl mb-4">📧</div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              {lang === 'ru' ? 'Проверьте почту' : lang === 'es' ? 'Revise su correo' : 'Check your email'}
+            </h2>
+            <p className="text-gray-500 dark:text-gray-400 mb-1">
+              {lang === 'ru' ? 'Мы отправили письмо на' : lang === 'es' ? 'Enviamos un correo a' : 'We sent an email to'}
+            </p>
+            <p className="font-semibold text-gray-900 dark:text-white mb-4">{pendingEmail}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              {lang === 'ru' ? 'Нажмите ссылку в письме чтобы подтвердить email и войти.' : lang === 'es' ? 'Haga clic en el enlace del correo para verificar su email.' : 'Click the link in the email to verify your email and sign in.'}
+            </p>
+            {resendSent ? (
+              <p className="text-green-600 text-sm mb-4">{lang === 'ru' ? '✅ Письмо отправлено повторно' : '✅ Email resent'}</p>
+            ) : (
+              <button onClick={handleResend} className="btn-secondary w-full mb-3">
+                {lang === 'ru' ? 'Отправить повторно' : lang === 'es' ? 'Reenviar' : 'Resend email'}
+              </button>
+            )}
+            <button onClick={() => { setPendingEmail(null); setResendSent(false); }} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+              ← {lang === 'ru' ? 'Назад' : lang === 'es' ? 'Volver' : 'Back'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-950 p-4">

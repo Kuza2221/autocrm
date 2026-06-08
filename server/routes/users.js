@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const db = require('../db');
 const { signAccess, signRefresh, JWT_SECRET, verifyToken } = require('../middleware/auth');
+const { sendVerificationEmail, SMTP_CONFIGURED } = require('../utils/mailer');
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -46,26 +48,33 @@ router.delete('/:id', verifyToken, (req, res) => {
 });
 
 // ── REGISTER ────────────────────────────────────────────────────────────────
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
   const { name, email, password, rememberMe = true } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
   if (password.length < 6) return res.status(400).json({ error: 'Password min 6 characters' });
 
-  // Check if any users exist — first user gets admin, rest get mechanic
   const count = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
   const role = count === 0 ? 'admin' : 'mechanic';
+  const verifyToken = crypto.randomBytes(32).toString('hex');
+  const emailVerified = (!SMTP_CONFIGURED || role === 'admin') ? 1 : 0;
 
   try {
-    const result = db.prepare('INSERT INTO users (name, email, password, role) VALUES (?,?,?,?)').run(name, email, password, role);
+    const result = db.prepare('INSERT INTO users (name, email, password, role, email_verified, verify_token) VALUES (?,?,?,?,?,?)').run(name, email, password, role, emailVerified, verifyToken);
     const user = { id: result.lastInsertRowid, name, email, role };
 
+    if (emailVerified === 0) {
+      // Need to verify email
+      try { await sendVerificationEmail(email, name, verifyToken); } catch(e) { console.error('Email send failed:', e.message); }
+      return res.json({ pending: true, email });
+    }
+
+    // Auto-verified (no SMTP or admin)
     const accessToken = signAccess(user);
     const refreshToken = signRefresh(user.id, rememberMe);
     db.prepare('INSERT INTO refresh_tokens (token, user_id, expires_at) VALUES (?,?,?)').run(
       refreshToken, user.id,
       new Date(Date.now() + (rememberMe ? 30 : 1) * 24 * 60 * 60 * 1000).toISOString()
     );
-
     res.cookie('rt', refreshToken, cookieOpts(rememberMe));
     res.json({ accessToken, user });
   } catch {
@@ -73,13 +82,53 @@ router.post('/register', (req, res) => {
   }
 });
 
+// ── VERIFY EMAIL ────────────────────────────────────────────────────────────
+router.get('/verify-email', (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ error: 'Token required' });
+
+  const user = db.prepare('SELECT * FROM users WHERE verify_token=?').get(token);
+  if (!user) return res.status(400).json({ error: 'Invalid or expired token' });
+
+  db.prepare('UPDATE users SET email_verified=1, verify_token=NULL WHERE id=?').run(user.id);
+
+  // Return access tokens so user is logged in after verification
+  const userObj = { id: user.id, name: user.name, email: user.email, role: user.role };
+  const accessToken = signAccess(userObj);
+  const refreshToken = signRefresh(user.id, true);
+  db.prepare('INSERT INTO refresh_tokens (token, user_id, expires_at) VALUES (?,?,?)').run(
+    refreshToken, user.id,
+    new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+  );
+
+  // Redirect to app with token in query param (frontend will handle)
+  const appUrl = process.env.APP_URL || 'http://localhost:3001';
+  res.redirect(`${appUrl}/?verified=1&token=${accessToken}&rt_set=1`);
+});
+
+// ── RESEND VERIFICATION ─────────────────────────────────────────────────────
+router.post('/resend-verification', async (req, res) => {
+  const { email } = req.body;
+  const user = db.prepare('SELECT * FROM users WHERE email=?').get(email);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user.email_verified) return res.json({ ok: true, already: true });
+
+  const token = user.verify_token || require('crypto').randomBytes(32).toString('hex');
+  db.prepare('UPDATE users SET verify_token=? WHERE id=?').run(token, user.id);
+
+  try { await sendVerificationEmail(email, user.name, token); } catch(e) { console.error(e); }
+  res.json({ ok: true });
+});
+
 // ── LOGIN ───────────────────────────────────────────────────────────────────
 router.post('/login', (req, res) => {
   const { email, password, rememberMe = false } = req.body;
-  const user = db.prepare('SELECT id, name, email, role FROM users WHERE email=? AND password=?').get(email, password);
+  const user = db.prepare('SELECT id, name, email, role, email_verified FROM users WHERE email=? AND password=?').get(email, password);
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!user.email_verified) return res.status(403).json({ error: 'Email not verified', code: 'EMAIL_NOT_VERIFIED', email });
 
-  const accessToken = signAccess(user);
+  const userObj = { id: user.id, name: user.name, email: user.email, role: user.role };
+  const accessToken = signAccess(userObj);
   const refreshToken = signRefresh(user.id, rememberMe);
 
   const expiresAt = new Date(Date.now() + (rememberMe ? 30 : 1) * 24 * 60 * 60 * 1000).toISOString();
@@ -89,7 +138,7 @@ router.post('/login', (req, res) => {
     .run(user.id, refreshToken, expiresAt, deviceHint);
 
   res.cookie('rt', refreshToken, cookieOpts(rememberMe));
-  res.json({ accessToken, user });
+  res.json({ accessToken, user: userObj });
 });
 
 // ── REFRESH ─────────────────────────────────────────────────────────────────

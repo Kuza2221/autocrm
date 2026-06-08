@@ -24,7 +24,7 @@ const navItems = [
 
 export default function Layout({ children }) {
   const { t } = useTranslation();
-  const { user, logout, dark, setDark } = useApp();
+  const { user, logout, dark, setDark, canAccess } = useApp();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -57,7 +57,7 @@ export default function Layout({ children }) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-2">
-          {navItems.map(({ to, icon: Icon, key }) => (
+          {navItems.filter(item => canAccess(item.key)).map(({ to, icon: Icon, key }) => (
             <NavLink
               key={key}
               to={to}

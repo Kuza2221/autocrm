@@ -4,6 +4,7 @@ import api from '../api.js';
 import { Plus, Search, Edit2, Trash2, ChevronDown, FileText, Camera, Printer, X, Upload } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
 import { StatusBadge, PriorityBadge } from '../components/StatusBadge.jsx';
+import { useApp } from '../App.jsx';
 
 const STATUSES = ['new', 'in_progress', 'waiting_parts', 'ready', 'done', 'cancelled'];
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -266,15 +267,212 @@ function PhotosTab({ orderId }) {
   );
 }
 
-function OrderDetail({ order, onClose }) {
+function WorkTracker({ order, onUpdate }) {
+  const { user } = useApp();
+  const [logs, setLogs] = useState([]);
+  const [modal, setModal] = useState(null); // 'start'|'complete'|'force'
+  const [photo, setPhoto] = useState(null);
+  const [note, setNote] = useState('');
+  const [elapsed, setElapsed] = useState('');
+  const l = lang();
+
+  useEffect(() => {
+    if (order?.id) api.get(`/orders/${order.id}/logs`).then(r => setLogs(r.data)).catch(()=>{});
+  }, [order?.id]);
+
+  // Live timer
+  useEffect(() => {
+    if (!order?.started_at) return;
+    const tick = () => {
+      const ms = Date.now() - new Date(order.started_at).getTime();
+      const h = Math.floor(ms/3600000);
+      const m = Math.floor((ms%3600000)/60000);
+      const s = Math.floor((ms%60000)/1000);
+      setElapsed(`${h > 0 ? h+'ч ' : ''}${m}м ${s}с`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [order?.started_at]);
+
+  const handlePhotoUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setPhoto(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const canControl = user?.role === 'admin' || user?.role === 'manager' || (user?.role === 'mechanic' && order?.master_id == user?.id) || !order?.master_id;
+
+  const submitAction = async () => {
+    if (!photo) return alert(l==='ru'?'Фото обязательно':'Photo required');
+    if (modal === 'force' && !note) return alert(l==='ru'?'Опишите проблему':'Describe the issue');
+
+    try {
+      await api.post(`/orders/${order.id}/${modal === 'force' ? 'force-majeure' : modal}`, {
+        photo_data: photo,
+        note,
+        worker_notes: modal === 'complete' ? note : undefined,
+      });
+      setModal(null); setPhoto(null); setNote('');
+      onUpdate();
+      api.get(`/orders/${order.id}/logs`).then(r => setLogs(r.data));
+    } catch(e) {
+      alert(e.response?.data?.error || 'Error');
+    }
+  };
+
+  const logActionColors = {
+    start: 'bg-blue-500',
+    complete: 'bg-green-500',
+    force_majeure: 'bg-red-500',
+    note: 'bg-gray-400',
+  };
+
+  const actionLabel = (action) => {
+    if (action === 'start') return l==='ru'?'Начало':'Start';
+    if (action === 'complete') return l==='ru'?'Завершение':'Complete';
+    if (action === 'force_majeure') return l==='ru'?'Форс-мажор':'Force majeure';
+    return action;
+  };
+
+  const modalTitle = modal === 'start' ? (l==='ru'?'Начать работу':'Start work') :
+    modal === 'complete' ? (l==='ru'?'Завершить работу':'Complete work') :
+    modal === 'force' ? (l==='ru'?'Форс-мажор':'Force majeure') : '';
+
+  return (
+    <div className="space-y-4">
+      {/* Timer */}
+      {order?.started_at && order?.status !== 'done' && (
+        <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+          <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+            {l==='ru'?'Время работы:':'Work time:'} <span className="font-mono font-bold">{elapsed}</span>
+          </span>
+        </div>
+      )}
+      {order?.completed_at && order?.started_at && (
+        <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-xl text-sm text-green-700 dark:text-green-300">
+          ✅ {l==='ru'?'Выполнено за':'Completed in'}: <strong>{
+            (() => {
+              const ms = new Date(order.completed_at) - new Date(order.started_at);
+              const h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000);
+              return `${h > 0 ? h+'ч ' : ''}${m}м`;
+            })()
+          }</strong>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      {canControl && (
+        <div className="flex flex-wrap gap-2">
+          {(order?.status === 'new' || order?.status === 'pending') && (
+            <button onClick={() => setModal('start')} className="btn-primary text-sm">
+              ▶ {l==='ru'?'Начать работу':'Start work'}
+            </button>
+          )}
+          {order?.status === 'in_progress' && (
+            <>
+              <button onClick={() => setModal('complete')} className="btn-primary text-sm" style={{background:'#16a34a'}}>
+                ✓ {l==='ru'?'Завершить':'Complete'}
+              </button>
+              <button onClick={() => setModal('force')} className="btn-danger text-sm">
+                ⚠ {l==='ru'?'Форс-мажор':'Force majeure'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Work logs */}
+      {logs.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{l==='ru'?'История работ':'Work history'}</h4>
+          {logs.map(log => (
+            <div key={log.id} className="flex gap-3 items-start">
+              <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${logActionColors[log.action] || 'bg-gray-400'}`} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">{log.user_name}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full text-white ${logActionColors[log.action] || 'bg-gray-400'}`}>
+                    {actionLabel(log.action)}
+                  </span>
+                  <span className="text-xs text-gray-400">{new Date(log.created_at).toLocaleString('ru-RU')}</span>
+                </div>
+                {log.note && <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">{log.note}</p>}
+                {log.photo_data && (
+                  <img src={log.photo_data} alt="work photo" className="mt-2 max-h-40 rounded-lg object-cover cursor-pointer hover:opacity-80"
+                    onClick={() => window.open(log.photo_data, '_blank')} />
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal for actions */}
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="font-bold text-gray-900 dark:text-white mb-4">{modalTitle}</h3>
+
+            {/* Photo upload - REQUIRED */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                📷 {l==='ru'?'Фото (обязательно)':'Photo (required)'} *
+              </label>
+              {photo ? (
+                <div className="relative">
+                  <img src={photo} className="w-full max-h-40 object-cover rounded-lg" alt="preview" />
+                  <button onClick={() => setPhoto(null)} className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">✕</button>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center gap-2 p-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl cursor-pointer hover:border-blue-400 transition-colors">
+                  <span className="text-2xl">📷</span>
+                  <span className="text-sm text-gray-500">{l==='ru'?'Нажмите чтобы добавить фото':'Click to add photo'}</span>
+                  <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoUpload} />
+                </label>
+              )}
+            </div>
+
+            {/* Note */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                {modal === 'force' ? `⚠ ${l==='ru'?'Опишите проблему *':'Describe the issue *'}` : `${l==='ru'?'Заметка':'Note'}`}
+              </label>
+              <textarea className="input" rows={3} value={note} onChange={e => setNote(e.target.value)}
+                placeholder={modal === 'force' ? (l==='ru'?'Что произошло?':'What happened?') : (l==='ru'?'Необязательно':'Optional')} />
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => { setModal(null); setPhoto(null); setNote(''); }} className="btn-secondary flex-1">{l==='ru'?'Отмена':'Cancel'}</button>
+              <button onClick={submitAction} disabled={!photo || (modal==='force' && !note)} className="btn-primary flex-1 disabled:opacity-40">
+                {l==='ru'?'Подтвердить':'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OrderDetail({ order: initialOrder, onClose }) {
   const { t } = useTranslation();
   const [tab, setTab] = useState('info');
+  const [order, setOrder] = useState(initialOrder);
   const l = lang();
   const fmt = (n) => Number(n || 0).toLocaleString();
   const total = Number(order.total_parts) + Number(order.total_labor) - Number(order.discount);
 
+  const reloadOrder = () => {
+    api.get(`/orders/${order.id}`).then(r => setOrder(r.data)).catch(()=>{});
+  };
+
   const tabs = [
     { id: 'info', label: l==='ru'?'Информация':'Info' },
+    { id: 'work', label: l==='ru'?'🔧 Работа':'🔧 Work' },
     { id: 'photos', label: l==='ru'?'Фото':'Photos' },
   ];
 
@@ -317,6 +515,7 @@ function OrderDetail({ order, onClose }) {
         </div>
       )}
 
+      {tab === 'work' && <WorkTracker order={order} onUpdate={reloadOrder} />}
       {tab === 'photos' && <PhotosTab orderId={order.id} />}
     </div>
   );

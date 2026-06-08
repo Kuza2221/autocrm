@@ -220,6 +220,16 @@ if (DATABASE_URL) {
         total_labor REAL DEFAULT 0,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS work_logs (
+        id SERIAL PRIMARY KEY,
+        order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        user_name TEXT,
+        action TEXT NOT NULL,
+        note TEXT,
+        photo_data TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
     `;
 
     // Run schema creation
@@ -230,11 +240,18 @@ if (DATABASE_URL) {
     }).then(r => {
       if (parseInt(r.rows[0].c) === 0) {
         return pool.query(
-          "INSERT INTO users (name, email, password, role) VALUES ($1,$2,$3,$4)",
-          ['Admin', 'admin@autocrm.com', 'admin123', 'admin']
+          "INSERT INTO users (name, email, password, role, email_verified) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (email) DO UPDATE SET email_verified=1",
+          ['Admin', 'admin@autocrm.com', 'admin123', 'admin', 1]
         );
       }
-    }).then(() => { done = true; })
+    }).then(() => {
+      // Run column additions (idempotent)
+      pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER DEFAULT 0`).catch(()=>{});
+      pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token TEXT`).catch(()=>{});
+      pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS started_at TEXT`).catch(()=>{});
+      pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS completed_at TEXT`).catch(()=>{});
+      pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS worker_notes TEXT`).catch(()=>{});
+    })
       .catch(e => { console.error('Schema init error:', e.message); done = true; });
 
     deasync.loopWhile(() => !done);
@@ -422,6 +439,16 @@ if (DATABASE_URL) {
       total_labor REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS work_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      user_name TEXT,
+      action TEXT NOT NULL,
+      note TEXT,
+      photo_data TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Migrations
@@ -440,12 +467,20 @@ if (DATABASE_URL) {
   if (!migrated('add_client_birthday')) {
     try { db.exec('ALTER TABLE clients ADD COLUMN birthday TEXT'); } catch {}
   }
+  if (!migrated('add_email_verified')) {
+    try { db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0'); } catch {}
+    try { db.exec('ALTER TABLE users ADD COLUMN verify_token TEXT'); } catch {}
+  }
+  if (!migrated('add_order_timer')) {
+    try { db.exec('ALTER TABLE orders ADD COLUMN started_at TEXT'); } catch {}
+    try { db.exec('ALTER TABLE orders ADD COLUMN completed_at TEXT'); } catch {}
+    try { db.exec('ALTER TABLE orders ADD COLUMN worker_notes TEXT'); } catch {}
+  }
 
   // Seed default admin
   const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get();
   if (userCount.c === 0) {
-    db.prepare('INSERT INTO users (name, email, password, role) VALUES (?,?,?,?)')
-      .run('Admin', 'admin@autocrm.com', 'admin123', 'admin');
+    db.prepare('INSERT INTO users (name, email, password, role, email_verified) VALUES (?,?,?,?,?)').run('Admin', 'admin@autocrm.com', 'admin123', 'admin', 1);
   }
 
   module.exports = db;
