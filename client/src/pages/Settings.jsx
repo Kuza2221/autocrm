@@ -161,7 +161,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 w-full max-w-2xl">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('settings.title')}</h1>
 
       {/* Language */}
@@ -322,7 +322,7 @@ export default function Settings() {
           {/* Invite code */}
           <div className="mb-4">
             <label className="label">{lang === 'ru' ? 'Код приглашения' : lang === 'es' ? 'Código de invitación' : 'Invite code'}</label>
-            <div className="flex items-center gap-3 mt-1">
+            <div className="flex flex-wrap items-center gap-3 mt-1">
               <span className="font-mono text-xl font-bold tracking-widest text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-xl">
                 {company.invite_code}
               </span>

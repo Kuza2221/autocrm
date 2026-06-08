@@ -31,7 +31,7 @@ function ExpenseForm({ onSave, onClose }) {
         <label className="label">{t('finance.description')}</label>
         <input className="input" value={form.description} onChange={e => set('description', e.target.value)} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">{t('finance.amount')} *</label>
           <input className="input" type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} required />
@@ -98,7 +98,7 @@ export default function Finance() {
       </div>
 
       {/* Date filter */}
-      <div className="flex gap-3 items-center flex-wrap">
+      <div className="flex flex-wrap gap-2 items-center">
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-500">{t('common.from')}:</span>
           <input className="input w-36" type="date" value={from} onChange={e => setFrom(e.target.value)} />
@@ -110,7 +110,7 @@ export default function Finance() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp size={16} className="text-green-500" />
@@ -140,7 +140,7 @@ export default function Finance() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Unpaid orders */}
         <div className="card">
           <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700">

@@ -65,7 +65,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={ClipboardList} label={t('dashboard.activeOrders')} value={stats?.activeOrders ?? '—'} color="bg-blue-500" />
         <StatCard icon={Users} label={t('dashboard.totalClients')} value={stats?.totalClients ?? '—'} color="bg-purple-500" />
         <StatCard icon={DollarSign} label={t('dashboard.monthRevenue')} value={stats ? fmt(stats.monthRevenue) : '—'} color="bg-green-500" sub={`${t('orders.paid')}: ${fmt(stats?.monthPaid)}`} />
@@ -126,7 +126,7 @@ export default function Dashboard() {
       {/* Quick actions */}
       <div>
         <h2 className="font-semibold text-gray-900 dark:text-white mb-3">{t('dashboard.quickActions')}</h2>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {quickActions.map(({ icon: Icon, label, desc, color, path }) => (
             <button key={path} onClick={() => navigate(path)}
               className="card p-4 text-left hover:shadow-md transition-shadow flex flex-col gap-3">

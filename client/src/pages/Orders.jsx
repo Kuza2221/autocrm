@@ -60,7 +60,7 @@ function OrderForm({ initial, onSave, onClose, templateData }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">{t('orders.client')}</label>
           <select className="input" value={form.client_id} onChange={e => { set('client_id', e.target.value); set('vehicle_id', ''); }}>
@@ -147,7 +147,7 @@ function OrderForm({ initial, onSave, onClose, templateData }) {
       </div>
 
       {/* Totals */}
-      <div className="grid grid-cols-2 gap-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
         {[['total_parts', t('orders.parts')], ['total_labor', t('orders.labor')], ['discount', t('orders.discount')], ['paid', t('orders.paid')]].map(([k, label]) => (
           <div key={k}>
             <label className="label">{label}</label>
@@ -237,7 +237,7 @@ function PhotosTab({ orderId }) {
           <p className="text-sm">{l==='ru'?'Нет фотографий':'No photos yet'}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {photos.map(p => (
             <div key={p.id} className="relative group rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 aspect-square cursor-pointer" onClick={() => loadPhotoData(p)}>
               <div className="absolute inset-0 flex items-center justify-center text-gray-400">
@@ -495,7 +495,7 @@ function OrderDetail({ order: initialOrder, onClose }) {
 
       {tab === 'info' && (
         <div className="space-y-4 print-order">
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             <div><span className="text-gray-400">#{order.id}</span></div>
             <div><span className="text-gray-400">{order.created_at?.slice(0,10)}</span></div>
             {order.client_name && <div><span className="text-gray-500">{t('orders.client')}:</span> <span className="font-medium">{order.client_name}</span></div>}
@@ -621,6 +621,7 @@ export default function Orders() {
       </div>
 
       <div className="card overflow-hidden">
+        <div className="overflow-x-auto rounded-xl">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
@@ -680,6 +681,7 @@ export default function Orders() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Modal open={modal === 'form'} onClose={() => { setModal(null); load(); }} title={selected ? `${t('orders.edit')} #${selected.id}` : t('orders.add')} size="xl">

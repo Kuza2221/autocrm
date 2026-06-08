@@ -57,7 +57,7 @@ export default function Analytics() {
         )}
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Top services */}
         <div className="card p-5">
           <h2 className="font-semibold text-gray-900 dark:text-white mb-4">{t('analytics.topServices')}</h2>
