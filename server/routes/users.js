@@ -55,28 +55,38 @@ router.post('/register', async (req, res) => {
 
   const count = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
   const role = count === 0 ? 'admin' : 'mechanic';
-  const verifyToken = crypto.randomBytes(32).toString('hex');
-  const emailVerified = (!SMTP_CONFIGURED || role === 'admin') ? 1 : 0;
+  const vToken = crypto.randomBytes(32).toString('hex');
+  // First user (admin) is auto-verified; everyone else must verify email
+  const isFirstUser = (role === 'admin');
 
   try {
-    const result = db.prepare('INSERT INTO users (name, email, password, role, email_verified, verify_token) VALUES (?,?,?,?,?,?)').run(name, email, password, role, emailVerified, verifyToken);
+    const result = db.prepare('INSERT INTO users (name, email, password, role, email_verified, verify_token) VALUES (?,?,?,?,?,?)').run(
+      name, email, password, role, isFirstUser ? 1 : 0, vToken
+    );
     const user = { id: result.lastInsertRowid, name, email, role };
 
-    if (emailVerified === 0) {
-      // Need to verify email
-      try { await sendVerificationEmail(email, name, verifyToken); } catch(e) { console.error('Email send failed:', e.message); }
-      return res.json({ pending: true, email });
+    if (isFirstUser) {
+      // Admin: log in immediately, no verification needed
+      const accessToken = signAccess(user);
+      const refreshToken = signRefresh(user.id, rememberMe);
+      db.prepare('INSERT INTO refresh_tokens (token, user_id, expires_at) VALUES (?,?,?)').run(
+        refreshToken, user.id,
+        new Date(Date.now() + (rememberMe ? 30 : 1) * 24 * 60 * 60 * 1000).toISOString()
+      );
+      res.cookie('rt', refreshToken, cookieOpts(rememberMe));
+      return res.json({ accessToken, user });
     }
 
-    // Auto-verified (no SMTP or admin)
-    const accessToken = signAccess(user);
-    const refreshToken = signRefresh(user.id, rememberMe);
-    db.prepare('INSERT INTO refresh_tokens (token, user_id, expires_at) VALUES (?,?,?)').run(
-      refreshToken, user.id,
-      new Date(Date.now() + (rememberMe ? 30 : 1) * 24 * 60 * 60 * 1000).toISOString()
-    );
-    res.cookie('rt', refreshToken, cookieOpts(rememberMe));
-    res.json({ accessToken, user });
+    // Send verification email (Ethereal if no SMTP configured — always works)
+    let previewUrl = null;
+    try {
+      const mail = await sendVerificationEmail(email, name, vToken);
+      previewUrl = mail.previewUrl || null;
+    } catch(e) {
+      console.error('Email send failed:', e.message);
+    }
+
+    res.json({ pending: true, email, previewUrl });
   } catch {
     res.status(400).json({ error: 'Email already exists' });
   }
@@ -116,8 +126,12 @@ router.post('/resend-verification', async (req, res) => {
   const token = user.verify_token || require('crypto').randomBytes(32).toString('hex');
   db.prepare('UPDATE users SET verify_token=? WHERE id=?').run(token, user.id);
 
-  try { await sendVerificationEmail(email, user.name, token); } catch(e) { console.error(e); }
-  res.json({ ok: true });
+  let previewUrl = null;
+  try {
+    const mail = await sendVerificationEmail(email, user.name, token);
+    previewUrl = mail.previewUrl || null;
+  } catch(e) { console.error(e); }
+  res.json({ ok: true, previewUrl });
 });
 
 // ── LOGIN ───────────────────────────────────────────────────────────────────

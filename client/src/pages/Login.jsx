@@ -71,6 +71,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [pendingEmail, setPendingEmail] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [resendSent, setResendSent] = useState(false);
 
   const lang = i18n.language?.slice(0, 2) || 'ru';
@@ -102,6 +103,7 @@ export default function Login() {
       const { data } = await api.post(endpoint, payload);
       if (data.pending) {
         setPendingEmail(data.email);
+        setPreviewUrl(data.previewUrl || null);
       } else {
         login(data);
       }
@@ -125,8 +127,9 @@ export default function Login() {
 
   const handleResend = async () => {
     try {
-      await api.post('/users/resend-verification', { email: pendingEmail });
+      const { data } = await api.post('/users/resend-verification', { email: pendingEmail });
       setResendSent(true);
+      if (data.previewUrl) setPreviewUrl(data.previewUrl);
     } catch {}
   };
 
@@ -152,6 +155,15 @@ export default function Login() {
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
               {lang === 'ru' ? 'Нажмите ссылку в письме чтобы подтвердить email и войти.' : lang === 'es' ? 'Haga clic en el enlace del correo para verificar su email.' : 'Click the link in the email to verify your email and sign in.'}
             </p>
+
+            {/* Open email button — shown when Ethereal preview URL is available */}
+            {previewUrl && (
+              <a href={previewUrl} target="_blank" rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full mb-3 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors">
+                📧 {lang === 'ru' ? 'Открыть письмо' : lang === 'es' ? 'Abrir correo' : 'Open email'}
+              </a>
+            )}
+
             {resendSent ? (
               <p className="text-green-600 text-sm mb-4">{lang === 'ru' ? '✅ Письмо отправлено повторно' : '✅ Email resent'}</p>
             ) : (
@@ -159,7 +171,7 @@ export default function Login() {
                 {lang === 'ru' ? 'Отправить повторно' : lang === 'es' ? 'Reenviar' : 'Resend email'}
               </button>
             )}
-            <button onClick={() => { setPendingEmail(null); setResendSent(false); }} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+            <button onClick={() => { setPendingEmail(null); setPreviewUrl(null); setResendSent(false); }} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
               ← {lang === 'ru' ? 'Назад' : lang === 'es' ? 'Volver' : 'Back'}
             </button>
           </div>
