@@ -20,14 +20,14 @@ function cookieOpts(rememberMe) {
 
 // ── List users (protected) ──────────────────────────────────────────────────
 router.get('/', verifyToken, (req, res) => {
-  res.json(db.prepare('SELECT id, name, email, role, created_at FROM users ORDER BY name').all());
+  res.json(db.prepare('SELECT id, name, email, role, created_at FROM users WHERE company_id=? ORDER BY name').all(req.user.company_id));
 });
 
 // ── Create user (protected, admin) ─────────────────────────────────────────
 router.post('/', verifyToken, (req, res) => {
   const { name, email, password, role } = req.body;
   try {
-    const result = db.prepare('INSERT INTO users (name, email, password, role) VALUES (?,?,?,?)').run(name, email, password, role);
+    const result = db.prepare('INSERT INTO users (name, email, password, role, company_id) VALUES (?,?,?,?,?)').run(name, email, password, role, req.user.company_id);
     res.json({ id: result.lastInsertRowid });
   } catch {
     res.status(400).json({ error: 'Email already exists' });
@@ -37,36 +37,69 @@ router.post('/', verifyToken, (req, res) => {
 // ── Update user ─────────────────────────────────────────────────────────────
 router.put('/:id', verifyToken, (req, res) => {
   const { name, email, role } = req.body;
-  db.prepare('UPDATE users SET name=?, email=?, role=? WHERE id=?').run(name, email, role, req.params.id);
+  db.prepare('UPDATE users SET name=?, email=?, role=? WHERE id=? AND company_id=?').run(name, email, role, req.params.id, req.user.company_id);
   res.json({ ok: true });
 });
 
 // ── Delete user ─────────────────────────────────────────────────────────────
 router.delete('/:id', verifyToken, (req, res) => {
-  db.prepare('DELETE FROM users WHERE id=?').run(req.params.id);
+  db.prepare('DELETE FROM users WHERE id=? AND company_id=?').run(req.params.id, req.user.company_id);
   res.json({ ok: true });
 });
 
 // ── REGISTER ────────────────────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
-  const { name, email, password, rememberMe = true } = req.body;
+  const { name, email, password, rememberMe = true, mode = 'create', companyName, inviteCode } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
   if (password.length < 6) return res.status(400).json({ error: 'Password min 6 characters' });
 
-  const count = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
-  const role = count === 0 ? 'admin' : 'mechanic';
+  let companyId = null;
+  let userRole = 'mechanic';
+
+  const totalUsers = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+
+  if (mode === 'join') {
+    if (!inviteCode) return res.status(400).json({ error: 'Invite code required' });
+    const company = db.prepare('SELECT id FROM companies WHERE invite_code=?').get(inviteCode.toUpperCase().trim());
+    if (!company) return res.status(400).json({ error: 'Invalid invite code' });
+    companyId = company.id;
+    userRole = 'mechanic';
+  } else {
+    // Create new company
+    if (!companyName && totalUsers > 0) return res.status(400).json({ error: 'Company name required' });
+    const cName = companyName || 'My Company';
+
+    // Generate unique invite code
+    let code;
+    let attempts = 0;
+    do {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      code = '';
+      for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+      attempts++;
+    } while (db.prepare('SELECT id FROM companies WHERE invite_code=?').get(code) && attempts < 10);
+
+    const compResult = db.prepare('INSERT INTO companies (name, invite_code) VALUES (?,?)').run(cName, code);
+    companyId = compResult.lastInsertRowid;
+    userRole = 'admin';
+  }
+
   const vToken = crypto.randomBytes(32).toString('hex');
-  // First user (admin) is auto-verified; everyone else must verify email
-  const isFirstUser = (role === 'admin');
+  const isAdmin = (userRole === 'admin');
 
   try {
-    const result = db.prepare('INSERT INTO users (name, email, password, role, email_verified, verify_token) VALUES (?,?,?,?,?,?)').run(
-      name, email, password, role, isFirstUser ? 1 : 0, vToken
-    );
-    const user = { id: result.lastInsertRowid, name, email, role };
+    const result = db.prepare(
+      'INSERT INTO users (name, email, password, role, company_id, email_verified, verify_token) VALUES (?,?,?,?,?,?,?)'
+    ).run(name, email, password, userRole, companyId, isAdmin ? 1 : 0, vToken);
 
-    if (isFirstUser) {
-      // Admin: log in immediately, no verification needed
+    // If creating company, set owner_id
+    if (mode === 'create' || totalUsers === 0) {
+      db.prepare('UPDATE companies SET owner_id=? WHERE id=?').run(result.lastInsertRowid, companyId);
+    }
+
+    const user = { id: result.lastInsertRowid, name, email, role: userRole, company_id: companyId };
+
+    if (isAdmin) {
       const accessToken = signAccess(user);
       const refreshToken = signRefresh(user.id, rememberMe);
       db.prepare('INSERT INTO refresh_tokens (token, user_id, expires_at) VALUES (?,?,?)').run(
@@ -74,21 +107,25 @@ router.post('/register', async (req, res) => {
         new Date(Date.now() + (rememberMe ? 30 : 1) * 24 * 60 * 60 * 1000).toISOString()
       );
       res.cookie('rt', refreshToken, cookieOpts(rememberMe));
-      return res.json({ accessToken, user });
+
+      const company = db.prepare('SELECT invite_code, name FROM companies WHERE id=?').get(companyId);
+      return res.json({ accessToken, user, invite_code: company.invite_code, company_name: company.name });
     }
 
-    // Send verification email (Ethereal if no SMTP configured — always works)
+    // Worker joining: send verification email
     let previewUrl = null;
     try {
       const mail = await sendVerificationEmail(email, name, vToken);
       previewUrl = mail.previewUrl || null;
-    } catch(e) {
-      console.error('Email send failed:', e.message);
-    }
+    } catch(e) { console.error('Email send failed:', e.message); }
 
     res.json({ pending: true, email, previewUrl });
-  } catch {
-    res.status(400).json({ error: 'Email already exists' });
+  } catch(e) {
+    if (e.message?.includes('UNIQUE') || e.message?.includes('unique')) {
+      return res.status(400).json({ error: 'Email already exists' });
+    }
+    console.error('Register error:', e);
+    res.status(500).json({ error: 'Registration failed' });
   }
 });
 
@@ -102,8 +139,7 @@ router.get('/verify-email', (req, res) => {
 
   db.prepare('UPDATE users SET email_verified=1, verify_token=NULL WHERE id=?').run(user.id);
 
-  // Return access tokens so user is logged in after verification
-  const userObj = { id: user.id, name: user.name, email: user.email, role: user.role };
+  const userObj = { id: user.id, name: user.name, email: user.email, role: user.role, company_id: user.company_id };
   const accessToken = signAccess(userObj);
   const refreshToken = signRefresh(user.id, true);
   db.prepare('INSERT INTO refresh_tokens (token, user_id, expires_at) VALUES (?,?,?)').run(
@@ -111,7 +147,6 @@ router.get('/verify-email', (req, res) => {
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
   );
 
-  // Redirect to app with token in query param (frontend will handle)
   const appUrl = process.env.APP_URL || 'http://localhost:3001';
   res.redirect(`${appUrl}/?verified=1&token=${accessToken}&rt_set=1`);
 });
@@ -137,11 +172,11 @@ router.post('/resend-verification', async (req, res) => {
 // ── LOGIN ───────────────────────────────────────────────────────────────────
 router.post('/login', (req, res) => {
   const { email, password, rememberMe = false } = req.body;
-  const user = db.prepare('SELECT id, name, email, role, email_verified FROM users WHERE email=? AND password=?').get(email, password);
+  const user = db.prepare('SELECT id, name, email, role, company_id, email_verified FROM users WHERE email=? AND password=?').get(email, password);
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   if (!user.email_verified) return res.status(403).json({ error: 'Email not verified', code: 'EMAIL_NOT_VERIFIED', email });
 
-  const userObj = { id: user.id, name: user.name, email: user.email, role: user.role };
+  const userObj = { id: user.id, name: user.name, email: user.email, role: user.role, company_id: user.company_id };
   const accessToken = signAccess(userObj);
   const refreshToken = signRefresh(user.id, rememberMe);
 
@@ -172,12 +207,11 @@ router.post('/refresh', (req, res) => {
     return res.status(401).json({ error: 'Refresh token expired' });
   }
 
-  const user = db.prepare('SELECT id, name, email, role FROM users WHERE id=?').get(payload.id);
+  const user = db.prepare('SELECT id, name, email, role, company_id FROM users WHERE id=?').get(payload.id);
   if (!user) return res.status(401).json({ error: 'User not found' });
 
   const accessToken = signAccess(user);
 
-  // Rotate refresh token
   const newRefresh = signRefresh(user.id, true);
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
   db.prepare('UPDATE refresh_tokens SET token=?, expires_at=? WHERE token=?').run(newRefresh, expiresAt, token);
@@ -196,7 +230,7 @@ router.post('/logout', (req, res) => {
 
 // ── ME (current user) ────────────────────────────────────────────────────────
 router.get('/me', verifyToken, (req, res) => {
-  const user = db.prepare('SELECT id, name, email, role FROM users WHERE id=?').get(req.user.id);
+  const user = db.prepare('SELECT id, name, email, role, company_id FROM users WHERE id=?').get(req.user.id);
   res.json(user);
 });
 

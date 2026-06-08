@@ -27,6 +27,7 @@ app.use(cookieParser());
 
 // ── API Routes ────────────────────────────────────────────────────────────
 app.use('/api/users', require('./routes/users'));
+app.use('/api/companies', require('./routes/companies'));
 app.use('/api/clients', require('./routes/clients'));
 app.use('/api/vehicles', require('./routes/vehicles'));
 app.use('/api/orders', require('./routes/orders'));

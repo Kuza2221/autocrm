@@ -8,7 +8,7 @@ const REFRESH_TOKEN_TTL_LONG = '30d';
 
 function signAccess(user) {
   return jwt.sign(
-    { id: user.id, name: user.name, email: user.email, role: user.role },
+    { id: user.id, name: user.name, email: user.email, role: user.role, company_id: user.company_id },
     JWT_SECRET,
     { expiresIn: ACCESS_TOKEN_TTL }
   );

@@ -230,6 +230,13 @@ if (DATABASE_URL) {
         photo_data TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS companies (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        invite_code TEXT UNIQUE NOT NULL,
+        owner_id INTEGER,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
     `;
 
     // Run schema creation
@@ -251,6 +258,12 @@ if (DATABASE_URL) {
       pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS started_at TEXT`).catch(()=>{});
       pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS completed_at TEXT`).catch(()=>{});
       pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS worker_notes TEXT`).catch(()=>{});
+      // Multi-tenancy: add company_id to all data tables
+      const dataTables = ['users','clients','vehicles','orders','parts','appointments','expenses','reminders','order_photos','order_templates','work_logs'];
+      for (const t of dataTables) {
+        pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS company_id INTEGER`).catch(()=>{});
+      }
+      pool.query(`INSERT INTO companies (id, name, invite_code) VALUES (1, 'Default Company', 'DEMO01') ON CONFLICT DO NOTHING`).catch(()=>{});
     })
       .catch(e => { console.error('Schema init error:', e.message); done = true; });
 
@@ -449,6 +462,13 @@ if (DATABASE_URL) {
       photo_data TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS companies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      invite_code TEXT UNIQUE NOT NULL,
+      owner_id INTEGER,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Migrations
@@ -475,6 +495,18 @@ if (DATABASE_URL) {
     try { db.exec('ALTER TABLE orders ADD COLUMN started_at TEXT'); } catch {}
     try { db.exec('ALTER TABLE orders ADD COLUMN completed_at TEXT'); } catch {}
     try { db.exec('ALTER TABLE orders ADD COLUMN worker_notes TEXT'); } catch {}
+  }
+  if (!migrated('add_company_id')) {
+    const tables = ['users','clients','vehicles','orders','parts','appointments','expenses','reminders','order_photos','order_templates','work_logs'];
+    for (const t of tables) {
+      try { db.exec(`ALTER TABLE ${t} ADD COLUMN company_id INTEGER`); } catch {}
+    }
+    try {
+      db.exec(`INSERT OR IGNORE INTO companies (id, name, invite_code) VALUES (1, 'Default Company', 'DEMO01')`);
+      for (const t of tables) {
+        try { db.exec(`UPDATE ${t} SET company_id = 1 WHERE company_id IS NULL`); } catch {}
+      }
+    } catch(e) { console.error('Migration error:', e.message); }
   }
 
   // Seed default admin
