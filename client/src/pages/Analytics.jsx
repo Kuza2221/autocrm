@@ -22,7 +22,7 @@ export default function Analytics() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('analytics.title')}</h1>
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
           {['week', 'month', 'year'].map(p => (
@@ -57,7 +57,7 @@ export default function Analytics() {
         )}
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Top services */}
         <div className="card p-5">
           <h2 className="font-semibold text-gray-900 dark:text-white mb-4">{t('analytics.topServices')}</h2>

@@ -10,10 +10,22 @@ import Warehouse from './pages/Warehouse.jsx';
 import Finance from './pages/Finance.jsx';
 import Analytics from './pages/Analytics.jsx';
 import Settings from './pages/Settings.jsx';
+import Schedule from './pages/Schedule.jsx';
 import api, { setToken } from './api.js';
 
 export const AppContext = createContext(null);
 export function useApp() { return useContext(AppContext); }
+
+const PERMISSIONS = {
+  admin:       ['dashboard','clients','orders','calendar','warehouse','finance','analytics','settings','schedule'],
+  manager:     ['dashboard','clients','orders','calendar','warehouse','finance','analytics','schedule'],
+  receptionist:['dashboard','clients','orders','calendar'],
+  mechanic:    ['dashboard','orders','warehouse','schedule'],
+};
+
+export function canAccess(role, resource) {
+  return (PERMISSIONS[role] || []).includes(resource);
+}
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -27,6 +39,16 @@ export default function App() {
 
   // ── Auto-login via refresh token cookie on page load ──────────────────
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('verified') === '1' && params.get('token')) {
+      const token = params.get('token');
+      setToken(token);
+      api.get('/users/me').then(r => {
+        setUser(r.data);
+        window.history.replaceState({}, '', '/');
+      }).catch(() => setAuthLoading(false)).finally(() => setAuthLoading(false));
+      return;
+    }
     api.post('/users/refresh')
       .then(({ data }) => {
         setToken(data.accessToken);
@@ -59,7 +81,7 @@ export default function App() {
   }
 
   return (
-    <AppContext.Provider value={{ user, login, logout, dark, setDark }}>
+    <AppContext.Provider value={{ user, login, logout, dark, setDark, canAccess: (resource) => canAccess(user?.role, resource) }}>
       <BrowserRouter>
         {!user ? (
           <Routes>
@@ -76,6 +98,7 @@ export default function App() {
               <Route path="/finance" element={<Finance />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/schedule" element={<Schedule />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </Layout>

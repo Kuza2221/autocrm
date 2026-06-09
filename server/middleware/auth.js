@@ -8,7 +8,7 @@ const REFRESH_TOKEN_TTL_LONG = '30d';
 
 function signAccess(user) {
   return jwt.sign(
-    { id: user.id, name: user.name, email: user.email, role: user.role },
+    { id: user.id, name: user.name, email: user.email, role: user.role, company_id: user.company_id },
     JWT_SECRET,
     { expiresIn: ACCESS_TOKEN_TTL }
   );
@@ -44,4 +44,12 @@ function optionalAuth(req, res, next) {
   next();
 }
 
-module.exports = { verifyToken, optionalAuth, signAccess, signRefresh, JWT_SECRET };
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    if (!roles.includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+    next();
+  };
+}
+
+module.exports = { verifyToken, optionalAuth, signAccess, signRefresh, JWT_SECRET, requireRole };

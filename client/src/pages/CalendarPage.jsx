@@ -37,7 +37,7 @@ function AppForm({ initial, onSave, onClose }) {
         <label className="label">{t('calendar.appointmentTitle')} *</label>
         <input className="input" value={form.title} onChange={e => set('title', e.target.value)} required />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">{t('calendar.client')}</label>
           <select className="input" value={form.client_id} onChange={e => { set('client_id', e.target.value); set('vehicle_id', ''); }}>
@@ -125,7 +125,7 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('calendar.title')}</h1>
         <button onClick={() => { setSelected(null); setModal('form'); }} className="btn-primary">
           <Plus size={16} /> {t('calendar.add')}
@@ -134,7 +134,7 @@ export default function CalendarPage() {
 
       <div className="card p-4">
         {/* Month nav */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap gap-2 items-center justify-between mb-4">
           <button onClick={() => setCurrent(subMonths(current, 1))} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
             <ChevronLeft size={18} />
           </button>

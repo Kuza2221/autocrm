@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { verifyToken } = require('../middleware/auth');
 
-router.get('/', (req, res) => {
+router.get('/', verifyToken, (req, res) => {
   const { from, to, master_id } = req.query;
   let query = `
     SELECT a.*,
@@ -13,9 +14,9 @@ router.get('/', (req, res) => {
     LEFT JOIN clients c ON c.id = a.client_id
     LEFT JOIN vehicles v ON v.id = a.vehicle_id
     LEFT JOIN users u ON u.id = a.master_id
-    WHERE 1=1
+    WHERE a.company_id = ?
   `;
-  const params = [];
+  const params = [req.user.company_id];
   if (from) { query += ` AND a.start_time >= ?`; params.push(from); }
   if (to) { query += ` AND a.start_time <= ?`; params.push(to); }
   if (master_id) { query += ` AND a.master_id = ?`; params.push(master_id); }
@@ -23,23 +24,23 @@ router.get('/', (req, res) => {
   res.json(db.prepare(query).all(...params));
 });
 
-router.post('/', (req, res) => {
+router.post('/', verifyToken, (req, res) => {
   const { client_id, vehicle_id, master_id, title, description, start_time, end_time, status = 'scheduled' } = req.body;
   const result = db.prepare(
-    'INSERT INTO appointments (client_id, vehicle_id, master_id, title, description, start_time, end_time, status) VALUES (?,?,?,?,?,?,?,?)'
-  ).run(client_id, vehicle_id, master_id, title, description, start_time, end_time, status);
+    'INSERT INTO appointments (client_id, vehicle_id, master_id, title, description, start_time, end_time, status, company_id) VALUES (?,?,?,?,?,?,?,?,?)'
+  ).run(client_id, vehicle_id, master_id, title, description, start_time, end_time, status, req.user.company_id);
   res.json({ id: result.lastInsertRowid });
 });
 
-router.put('/:id', (req, res) => {
+router.put('/:id', verifyToken, (req, res) => {
   const { client_id, vehicle_id, master_id, title, description, start_time, end_time, status } = req.body;
-  db.prepare('UPDATE appointments SET client_id=?,vehicle_id=?,master_id=?,title=?,description=?,start_time=?,end_time=?,status=? WHERE id=?')
-    .run(client_id, vehicle_id, master_id, title, description, start_time, end_time, status, req.params.id);
+  db.prepare('UPDATE appointments SET client_id=?,vehicle_id=?,master_id=?,title=?,description=?,start_time=?,end_time=?,status=? WHERE id=? AND company_id=?')
+    .run(client_id, vehicle_id, master_id, title, description, start_time, end_time, status, req.params.id, req.user.company_id);
   res.json({ ok: true });
 });
 
-router.delete('/:id', (req, res) => {
-  db.prepare('DELETE FROM appointments WHERE id=?').run(req.params.id);
+router.delete('/:id', verifyToken, (req, res) => {
+  db.prepare('DELETE FROM appointments WHERE id=? AND company_id=?').run(req.params.id, req.user.company_id);
   res.json({ ok: true });
 });
 

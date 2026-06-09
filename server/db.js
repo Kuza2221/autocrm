@@ -220,6 +220,33 @@ if (DATABASE_URL) {
         total_labor REAL DEFAULT 0,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS work_logs (
+        id SERIAL PRIMARY KEY,
+        order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        user_name TEXT,
+        action TEXT NOT NULL,
+        note TEXT,
+        photo_data TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS companies (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        invite_code TEXT UNIQUE NOT NULL,
+        owner_id INTEGER,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS mechanic_schedules (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        company_id INTEGER,
+        day_of_week INTEGER NOT NULL,
+        start_time TEXT NOT NULL DEFAULT '09:00',
+        end_time TEXT NOT NULL DEFAULT '18:00',
+        is_available INTEGER DEFAULT 1,
+        UNIQUE(user_id, day_of_week)
+      );
     `;
 
     // Run schema creation
@@ -230,11 +257,25 @@ if (DATABASE_URL) {
     }).then(r => {
       if (parseInt(r.rows[0].c) === 0) {
         return pool.query(
-          "INSERT INTO users (name, email, password, role) VALUES ($1,$2,$3,$4)",
-          ['Admin', 'admin@autocrm.com', 'admin123', 'admin']
+          "INSERT INTO users (name, email, password, role, email_verified) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (email) DO UPDATE SET email_verified=1",
+          ['Admin', 'admin@autocrm.com', 'admin123', 'admin', 1]
         );
       }
-    }).then(() => { done = true; })
+    }).then(() => {
+      // Run column additions (idempotent)
+      pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER DEFAULT 0`).catch(()=>{});
+      pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token TEXT`).catch(()=>{});
+      pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS started_at TEXT`).catch(()=>{});
+      pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS completed_at TEXT`).catch(()=>{});
+      pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS worker_notes TEXT`).catch(()=>{});
+      pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS specialization TEXT DEFAULT ''`).catch(()=>{});
+      // Multi-tenancy: add company_id to all data tables
+      const dataTables = ['users','clients','vehicles','orders','parts','appointments','expenses','reminders','order_photos','order_templates','work_logs'];
+      for (const t of dataTables) {
+        pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS company_id INTEGER`).catch(()=>{});
+      }
+      pool.query(`INSERT INTO companies (id, name, invite_code) VALUES (1, 'Default Company', 'DEMO01') ON CONFLICT DO NOTHING`).catch(()=>{});
+    })
       .catch(e => { console.error('Schema init error:', e.message); done = true; });
 
     deasync.loopWhile(() => !done);
@@ -422,6 +463,23 @@ if (DATABASE_URL) {
       total_labor REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS work_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      user_name TEXT,
+      action TEXT NOT NULL,
+      note TEXT,
+      photo_data TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS companies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      invite_code TEXT UNIQUE NOT NULL,
+      owner_id INTEGER,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Migrations
@@ -440,12 +498,49 @@ if (DATABASE_URL) {
   if (!migrated('add_client_birthday')) {
     try { db.exec('ALTER TABLE clients ADD COLUMN birthday TEXT'); } catch {}
   }
+  if (!migrated('add_email_verified')) {
+    try { db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0'); } catch {}
+    try { db.exec('ALTER TABLE users ADD COLUMN verify_token TEXT'); } catch {}
+  }
+  if (!migrated('add_order_timer')) {
+    try { db.exec('ALTER TABLE orders ADD COLUMN started_at TEXT'); } catch {}
+    try { db.exec('ALTER TABLE orders ADD COLUMN completed_at TEXT'); } catch {}
+    try { db.exec('ALTER TABLE orders ADD COLUMN worker_notes TEXT'); } catch {}
+  }
+  if (!migrated('add_specialization')) {
+    try { db.exec('ALTER TABLE users ADD COLUMN specialization TEXT DEFAULT ""'); } catch {}
+  }
+  if (!migrated('mechanic_schedules')) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mechanic_schedules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        company_id INTEGER,
+        day_of_week INTEGER NOT NULL,
+        start_time TEXT NOT NULL DEFAULT '09:00',
+        end_time TEXT NOT NULL DEFAULT '18:00',
+        is_available INTEGER DEFAULT 1,
+        UNIQUE(user_id, day_of_week)
+      )
+    `);
+  }
+  if (!migrated('add_company_id')) {
+    const tables = ['users','clients','vehicles','orders','parts','appointments','expenses','reminders','order_photos','order_templates','work_logs'];
+    for (const t of tables) {
+      try { db.exec(`ALTER TABLE ${t} ADD COLUMN company_id INTEGER`); } catch {}
+    }
+    try {
+      db.exec(`INSERT OR IGNORE INTO companies (id, name, invite_code) VALUES (1, 'Default Company', 'DEMO01')`);
+      for (const t of tables) {
+        try { db.exec(`UPDATE ${t} SET company_id = 1 WHERE company_id IS NULL`); } catch {}
+      }
+    } catch(e) { console.error('Migration error:', e.message); }
+  }
 
   // Seed default admin
   const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get();
   if (userCount.c === 0) {
-    db.prepare('INSERT INTO users (name, email, password, role) VALUES (?,?,?,?)')
-      .run('Admin', 'admin@autocrm.com', 'admin123', 'admin');
+    db.prepare('INSERT INTO users (name, email, password, role, email_verified) VALUES (?,?,?,?,?)').run('Admin', 'admin@autocrm.com', 'admin123', 'admin', 1);
   }
 
   module.exports = db;

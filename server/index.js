@@ -27,6 +27,7 @@ app.use(cookieParser());
 
 // ── API Routes ────────────────────────────────────────────────────────────
 app.use('/api/users', require('./routes/users'));
+app.use('/api/companies', require('./routes/companies'));
 app.use('/api/clients', require('./routes/clients'));
 app.use('/api/vehicles', require('./routes/vehicles'));
 app.use('/api/orders', require('./routes/orders'));
@@ -41,6 +42,7 @@ app.use('/api/reminders', require('./routes/reminders'));
 app.use('/api/order-templates', require('./routes/order-templates'));
 app.use('/api/order-photos', require('./routes/order-photos'));
 app.use('/api/training', require('./routes/training'));
+app.use('/api/schedules', require('./routes/schedules'));
 
 app.get('/api/health', (req, res) => res.json({
   status: 'ok',

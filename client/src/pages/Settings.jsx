@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import api from '../api.js';
-import { Plus, Trash2, Globe, Moon, Sun, Calendar, Bot, Sparkles, ExternalLink, CheckCircle, AlertCircle, Key } from 'lucide-react';
+import { Plus, Trash2, Globe, Moon, Sun, Calendar, Bot, Sparkles, ExternalLink, CheckCircle, AlertCircle, Key, Building2, Copy, Check, RefreshCw, Edit2 } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
 import { useApp } from '../App.jsx';
 import i18n from '../i18n/index.js';
@@ -68,11 +68,27 @@ export default function Settings() {
   const [aiStatus, setAiStatus] = useState({ configured: false });
   const [gcalLoading, setGcalLoading] = useState(false);
   const [searchParams] = useSearchParams();
+  const [company, setCompany] = useState(null);
+  const [companyNameEdit, setCompanyNameEdit] = useState('');
+  const [editingCompanyName, setEditingCompanyName] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [regenLoading, setRegenLoading] = useState(false);
+
+  const [editingSpec, setEditingSpec] = useState(null); // { id, value }
 
   const load = () => api.get('/users').then(r => setUsers(r.data));
 
+  const saveSpecialization = async (id, specialization) => {
+    const u = users.find(x => x.id === id);
+    await api.put(`/users/${id}`, { name: u.name, email: u.email, role: u.role, specialization });
+    setEditingSpec(null);
+    load();
+  };
+  const loadCompany = () => api.get('/companies/me').then(r => { setCompany(r.data); setCompanyNameEdit(r.data.name); }).catch(() => {});
+
   useEffect(() => {
     load();
+    loadCompany();
     api.get('/google-calendar/status').then(r => setGcal(r.data)).catch(() => {});
     api.get('/ai/status').then(r => setAiStatus(r.data)).catch(() => {});
 
@@ -128,8 +144,33 @@ export default function Settings() {
     }
   };
 
+  const copyInviteCode = () => {
+    if (!company) return;
+    navigator.clipboard.writeText(company.invite_code).catch(() => {});
+    setCodeCopied(true);
+    setTimeout(() => setCodeCopied(false), 2000);
+  };
+
+  const regenCode = async () => {
+    if (!confirm(lang === 'ru' ? 'Сгенерировать новый код? Старый перестанет работать.' : 'Generate new code? Old code will stop working.')) return;
+    setRegenLoading(true);
+    try {
+      await api.post('/companies/regenerate-code');
+      loadCompany();
+    } catch (e) { alert(e.response?.data?.error || 'Error'); }
+    finally { setRegenLoading(false); }
+  };
+
+  const saveCompanyName = async () => {
+    try {
+      await api.put('/companies/me', { name: companyNameEdit });
+      setEditingCompanyName(false);
+      loadCompany();
+    } catch (e) { alert(e.response?.data?.error || 'Error'); }
+  };
+
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 w-full max-w-2xl">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('settings.title')}</h1>
 
       {/* Language */}
@@ -258,6 +299,80 @@ export default function Settings() {
         )}
       </div>
 
+      {/* Company (admin only) */}
+      {user?.role === 'admin' && company && (
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Building2 size={18} className="text-gray-400" />
+            <h2 className="font-semibold text-gray-900 dark:text-white">
+              {lang === 'ru' ? 'Компания' : lang === 'es' ? 'Empresa' : 'Company'}
+            </h2>
+          </div>
+
+          {/* Company name */}
+          <div className="mb-4">
+            <label className="label">{lang === 'ru' ? 'Название' : lang === 'es' ? 'Nombre' : 'Name'}</label>
+            {editingCompanyName ? (
+              <div className="flex gap-2 mt-1">
+                <input className="input flex-1" value={companyNameEdit} onChange={e => setCompanyNameEdit(e.target.value)} autoFocus />
+                <button onClick={saveCompanyName} className="btn-primary py-1.5 text-sm">{lang === 'ru' ? 'Сохранить' : 'Save'}</button>
+                <button onClick={() => { setEditingCompanyName(false); setCompanyNameEdit(company.name); }} className="btn-secondary py-1.5 text-sm">{lang === 'ru' ? 'Отмена' : 'Cancel'}</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-gray-900 dark:text-white font-medium">{company.name}</span>
+                <button onClick={() => setEditingCompanyName(true)} className="text-xs text-blue-600 hover:underline">
+                  {lang === 'ru' ? 'Изменить' : lang === 'es' ? 'Editar' : 'Edit'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Invite code */}
+          <div className="mb-4">
+            <label className="label">{lang === 'ru' ? 'Код приглашения' : lang === 'es' ? 'Código de invitación' : 'Invite code'}</label>
+            <div className="flex flex-wrap items-center gap-3 mt-1">
+              <span className="font-mono text-xl font-bold tracking-widest text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-xl">
+                {company.invite_code}
+              </span>
+              <button onClick={copyInviteCode} className="text-gray-400 hover:text-blue-600 transition-colors" title={lang === 'ru' ? 'Скопировать' : 'Copy'}>
+                {codeCopied ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}
+              </button>
+              <button onClick={regenCode} disabled={regenLoading} className="btn-secondary py-1.5 text-xs flex items-center gap-1">
+                <RefreshCw size={12} className={regenLoading ? 'animate-spin' : ''} />
+                {lang === 'ru' ? 'Новый код' : lang === 'es' ? 'Nuevo código' : 'New code'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              {lang === 'ru' ? 'Поделитесь кодом с сотрудниками для регистрации' : lang === 'es' ? 'Comparta el código con los empleados para registrarse' : 'Share this code with employees to register'}
+            </p>
+          </div>
+
+          {/* Members */}
+          {company.members && company.members.length > 0 && (
+            <div>
+              <label className="label mb-2">{lang === 'ru' ? 'Сотрудники' : lang === 'es' ? 'Empleados' : 'Members'}</label>
+              <div className="divide-y divide-gray-100 dark:divide-gray-700 border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
+                {company.members.map(m => (
+                  <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                      {m.name?.[0]?.toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">{m.name}</div>
+                      <div className="text-xs text-gray-400">{m.email}</div>
+                    </div>
+                    <span className="badge bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs">
+                      {t(`settings.roles.${m.role}`, m.role)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Users */}
       <div className="card overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
@@ -268,21 +383,48 @@ export default function Settings() {
         </div>
         <div className="divide-y divide-gray-100 dark:divide-gray-700">
           {users.map(u => (
-            <div key={u.id} className="flex items-center gap-3 px-5 py-3">
-              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold">
-                {u.name?.[0]?.toUpperCase()}
+            <div key={u.id} className="px-5 py-3">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                  {u.name?.[0]?.toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm text-gray-900 dark:text-white">{u.name}</div>
+                  <div className="text-xs text-gray-400">{u.email}</div>
+                </div>
+                <span className="badge bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs">
+                  {t(`settings.roles.${u.role}`, u.role)}
+                </span>
+                {user?.role === 'admin' && (u.role === 'mechanic' || u.role === 'manager') && (
+                  <button onClick={() => setEditingSpec({ id: u.id, value: u.specialization || '' })}
+                    className="p-1 text-gray-400 hover:text-blue-600" title={lang === 'ru' ? 'Специализация' : 'Specialization'}>
+                    <Edit2 size={13} />
+                  </button>
+                )}
+                {u.id !== user?.id && (
+                  <button onClick={() => deleteUser(u.id)} className="text-gray-300 hover:text-red-500">
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm text-gray-900 dark:text-white">{u.name}</div>
-                <div className="text-xs text-gray-400">{u.email}</div>
-              </div>
-              <span className="badge bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs">
-                {t(`settings.roles.${u.role}`, u.role)}
-              </span>
-              {u.id !== user?.id && (
-                <button onClick={() => deleteUser(u.id)} className="text-gray-300 hover:text-red-500 ml-1">
-                  <Trash2 size={15} />
-                </button>
+              {/* Specialization display */}
+              {u.specialization && editingSpec?.id !== u.id && (
+                <div className="ml-11 mt-1">
+                  <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full">{u.specialization}</span>
+                </div>
+              )}
+              {/* Specialization edit */}
+              {editingSpec?.id === u.id && (
+                <div className="ml-11 mt-2 flex gap-2">
+                  <input className="input flex-1 text-sm py-1.5" value={editingSpec.value}
+                    onChange={e => setEditingSpec(s => ({ ...s, value: e.target.value }))}
+                    placeholder={lang === 'ru' ? 'напр. Двигатели, ТО, Электрика' : 'e.g. Engines, Service, Electrics'}
+                    autoFocus />
+                  <button onClick={() => saveSpecialization(u.id, editingSpec.value)} className="btn-primary py-1.5 text-xs">
+                    {lang === 'ru' ? 'Сохранить' : 'Save'}
+                  </button>
+                  <button onClick={() => setEditingSpec(null)} className="btn-secondary py-1.5 text-xs">✕</button>
+                </div>
               )}
             </div>
           ))}

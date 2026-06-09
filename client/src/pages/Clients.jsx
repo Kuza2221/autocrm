@@ -25,7 +25,7 @@ function ClientForm({ initial, onSave, onClose }) {
         <label className="label">{t('clients.name')} *</label>
         <input className="input" value={form.name} onChange={e => set('name', e.target.value)} required />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">{t('clients.phone')}</label>
           <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} />
@@ -85,7 +85,7 @@ function VehicleForm({ clientId, initial, onSave, onClose }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">{t('vehicles.brand')} *</label>
           <input className="input" value={form.brand} onChange={e => set('brand', e.target.value)} required />
@@ -201,7 +201,7 @@ export default function Clients() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('clients.title')}</h1>
         <button onClick={() => { setSelected(null); setModal('add'); }} className="btn-primary">
           <Plus size={16} /> {t('clients.add')}
@@ -216,6 +216,7 @@ export default function Clients() {
 
       {/* Table */}
       <div className="card overflow-hidden">
+        <div className="overflow-x-auto rounded-xl">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
@@ -260,6 +261,7 @@ export default function Clients() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Add/Edit Client */}
@@ -271,7 +273,7 @@ export default function Clients() {
       <Modal open={modal === 'detail'} onClose={() => setModal(null)} title={detail?.name} size="lg">
         {detail && (
           <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {detail.phone && <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><Phone size={14}/>{detail.phone}</div>}
               {detail.email && <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><Mail size={14}/>{detail.email}</div>}
               {detail.birthday && <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">🎂 {detail.birthday}</div>}

@@ -22,7 +22,7 @@ function PartForm({ initial, onSave, onClose }) {
         <label className="label">{t('warehouse.name')} *</label>
         <input className="input" value={form.name} onChange={e => set('name', e.target.value)} required />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">{t('warehouse.sku')}</label>
           <input className="input" value={form.sku} onChange={e => set('sku', e.target.value)} />
@@ -93,7 +93,7 @@ export default function Warehouse() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('warehouse.title')}</h1>
         <button onClick={() => { setSelected(null); setModal('form'); }} className="btn-primary">
           <Plus size={16} /> {t('warehouse.add')}
@@ -101,7 +101,7 @@ export default function Warehouse() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="card p-4">
           <p className="text-sm text-gray-500">{t('warehouse.stockValue')}</p>
           <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{fmt(stockValue)}</p>
@@ -129,6 +129,7 @@ export default function Warehouse() {
       </div>
 
       <div className="card overflow-hidden">
+        <div className="overflow-x-auto rounded-xl">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
@@ -176,6 +177,7 @@ export default function Warehouse() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Modal open={modal === 'form'} onClose={() => { setModal(null); load(); }} title={selected ? t('warehouse.edit') : t('warehouse.add')}>
