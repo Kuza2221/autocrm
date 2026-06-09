@@ -43,6 +43,7 @@ export default function Dashboard() {
     api.get('/reminders').then(r => setReminders(r.data.slice(0, 5))).catch(() => {});
   }, []);
 
+  const isMechanic = user?.role === 'mechanic';
   const fmt = (n) => Number(n || 0).toLocaleString();
 
   const completeReminder = async (id) => {
@@ -50,7 +51,11 @@ export default function Dashboard() {
     api.get('/reminders').then(r => setReminders(r.data.slice(0, 5)));
   };
 
-  const quickActions = [
+  const quickActions = user?.role === 'mechanic' ? [
+    { icon: ClipboardList, label: l==='ru'?'Мои заявки':l==='es'?'Mis órdenes':'My Orders', desc: l==='ru'?'Посмотреть активные задачи':l==='es'?'Ver tareas activas':'View active tasks', color: 'bg-blue-500', path: '/orders' },
+    { icon: Calendar, label: l==='ru'?'Мой график':l==='es'?'Mi horario':'My Schedule', desc: l==='ru'?'Настроить рабочее время':l==='es'?'Configurar horario':'Set working hours', color: 'bg-green-500', path: '/schedule' },
+    { icon: AlertTriangle, label: l==='ru'?'Склад':l==='es'?'Almacén':'Warehouse', desc: l==='ru'?'Проверить наличие запчастей':l==='es'?'Verificar repuestos':'Check parts stock', color: 'bg-orange-500', path: '/warehouse' },
+  ] : [
     { icon: Plus, label: l==='ru'?'Новая заявка':l==='es'?'Nueva orden':'New Order', desc: l==='ru'?'Принять авто в ремонт':l==='es'?'Recibir vehículo':'Accept vehicle for repair', color: 'bg-blue-500', path: '/orders' },
     { icon: UserPlus, label: l==='ru'?'Новый клиент':l==='es'?'Nuevo cliente':'New Client', desc: l==='ru'?'Добавить клиента в базу':l==='es'?'Agregar cliente':'Add client to database', color: 'bg-purple-500', path: '/clients' },
     { icon: Calendar, label: l==='ru'?'Запись':l==='es'?'Cita':'Appointment', desc: l==='ru'?'Записать на приём':l==='es'?'Agendar cita':'Schedule appointment', color: 'bg-green-500', path: '/calendar' },
@@ -67,8 +72,8 @@ export default function Dashboard() {
       {/* Stats grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={ClipboardList} label={t('dashboard.activeOrders')} value={stats?.activeOrders ?? '—'} color="bg-blue-500" />
-        <StatCard icon={Users} label={t('dashboard.totalClients')} value={stats?.totalClients ?? '—'} color="bg-purple-500" />
-        <StatCard icon={DollarSign} label={t('dashboard.monthRevenue')} value={stats ? fmt(stats.monthRevenue) : '—'} color="bg-green-500" sub={`${t('orders.paid')}: ${fmt(stats?.monthPaid)}`} />
+        {!isMechanic && <StatCard icon={Users} label={t('dashboard.totalClients')} value={stats?.totalClients ?? '—'} color="bg-purple-500" />}
+        {!isMechanic && <StatCard icon={DollarSign} label={t('dashboard.monthRevenue')} value={stats ? fmt(stats.monthRevenue) : '—'} color="bg-green-500" sub={`${t('orders.paid')}: ${fmt(stats?.monthPaid)}`} />}
         <StatCard icon={AlertTriangle} label={t('dashboard.lowStock')} value={stats?.lowStock ?? '—'} color="bg-orange-500" />
       </div>
 
